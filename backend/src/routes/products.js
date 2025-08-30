@@ -10,7 +10,6 @@ const router = express.Router();
 // Product validation rules
 const productValidation = [
   body('code').trim().isLength({ min: 1, max: 50 }).escape(),
-  body('name').trim().isLength({ min: 1, max: 200 }).escape(),
   body('description').optional().trim().escape(),
   body('brand').optional().trim().isLength({ max: 100 }).escape(),
   body('category').optional().trim().isLength({ max: 100 }).escape(),
@@ -152,7 +151,7 @@ router.post('/', requireRole(['admin', 'manager']), productValidation, async (re
     }
 
     const {
-      code, name, description, brand, category, size, color,
+      code, description, brand, category, size, color,
       price, cost, quantity, min_quantity, supplier, season
     } = req.body;
 
@@ -172,13 +171,13 @@ router.post('/', requireRole(['admin', 'manager']), productValidation, async (re
     // Create product
     const result = await executeQuery(`
       INSERT INTO products (
-        code, name, description, brand, category, size, color,
+        code, description, brand, category, size, color,
         price, cost, quantity, min_quantity, barcode, supplier, season
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
-      code, name, description, brand, category, size, color,
+      code, description || null, brand || null, category || null, size || null, color || null,
       price, cost || null, quantity, min_quantity || 0,
-      barcode, supplier, season
+      barcode, supplier || null, season || null
     ]);
 
     const newProduct = await executeQuery(
@@ -207,7 +206,7 @@ router.put('/:id', requireRole(['admin', 'manager']), productValidation, async (
 
     const productId = req.params.id;
     const {
-      code, name, description, brand, category, size, color,
+      code, description, brand, category, size, color,
       price, cost, quantity, min_quantity, supplier, season
     } = req.body;
 
@@ -242,15 +241,15 @@ router.put('/:id', requireRole(['admin', 'manager']), productValidation, async (
     // Update product
     await executeQuery(`
       UPDATE products SET 
-        code = ?, name = ?, description = ?, brand = ?, category = ?,
+        code = ?, description = ?, brand = ?, category = ?,
         size = ?, color = ?, price = ?, cost = ?, quantity = ?,
         min_quantity = ?, barcode = ?, supplier = ?, season = ?,
         updated_at = NOW()
       WHERE id = ?
     `, [
-      code, name, description, brand, category, size, color,
+      code, description || null, brand || null, category || null, size || null, color || null,
       price, cost || null, quantity, min_quantity || 0,
-      barcode, supplier, season, productId
+      barcode, supplier || null, season || null, productId
     ]);
 
     const updatedProduct = await executeQuery(
