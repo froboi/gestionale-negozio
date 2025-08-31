@@ -34,7 +34,6 @@ import axios from 'axios';
 interface Product {
   id: number;
   code: string;
-  name: string;
   description?: string;
   brand?: string;
   category?: string;
@@ -75,7 +74,10 @@ const Products: React.FC = () => {
   const fetchProducts = async () => {
     try {
       setLoading(true);
-      const response = await axios.get('/api/products');
+      const token = localStorage.getItem('token');
+      const response = await axios.get('/api/products', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       setProducts(response.data.products || []);
       setError(null);
     } catch (error: any) {
@@ -94,9 +96,9 @@ const Products: React.FC = () => {
         description: product.description || '',
         size: product.size || '',
         color: product.color || '',
-        price: product.price.toString(),
+        price: product.price?.toString() || '',
         cost: product.cost?.toString() || '',
-        quantity: product.quantity.toString(),
+        quantity: product.quantity?.toString() || '',
         supplier: product.supplier || '',
         season: product.season || ''
       });
@@ -131,6 +133,7 @@ const Products: React.FC = () => {
 
   const handleSubmit = async () => {
     try {
+      const token = localStorage.getItem('token');
       const productData = {
         ...formData,
         price: parseFloat(formData.price),
@@ -139,9 +142,13 @@ const Products: React.FC = () => {
       };
 
       if (editingProduct) {
-        await axios.put(`/api/products/${editingProduct.id}`, productData);
+        await axios.put(`/api/products/${editingProduct.id}`, productData, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
       } else {
-        await axios.post('/api/products', productData);
+        await axios.post('/api/products', productData, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
       }
 
       handleCloseDialog();
@@ -156,7 +163,10 @@ const Products: React.FC = () => {
   const handleDelete = async (productId: number) => {
     if (window.confirm('Sei sicuro di voler eliminare questo prodotto?')) {
       try {
-        await axios.delete(`/api/products/${productId}`);
+        const token = localStorage.getItem('token');
+        await axios.delete(`/api/products/${productId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
         fetchProducts();
         setError(null);
       } catch (error: any) {
@@ -201,7 +211,7 @@ const Products: React.FC = () => {
           <TableHead>
             <TableRow>
               <TableCell>Codice</TableCell>
-              <TableCell>Nome</TableCell>
+              <TableCell>Descrizione</TableCell>
               <TableCell>Categoria</TableCell>
               <TableCell>Taglia</TableCell>
               <TableCell>Colore</TableCell>
@@ -224,7 +234,7 @@ const Products: React.FC = () => {
                 <TableRow key={product.id}>
                   <TableCell>{product.code}</TableCell>
                   <TableCell>
-                    <Typography variant="subtitle2">{product.name}</Typography>
+                    <Typography variant="subtitle2">{product.description || product.code}</Typography>
                     {product.brand && (
                       <Typography variant="caption" color="textSecondary">
                         {product.brand}
@@ -238,7 +248,7 @@ const Products: React.FC = () => {
                   </TableCell>
                   <TableCell>{product.size || '-'}</TableCell>
                   <TableCell>{product.color || '-'}</TableCell>
-                  <TableCell>€{product.price.toFixed(2)}</TableCell>
+                  <TableCell>€{parseFloat(String(product.price || '0')).toFixed(2)}</TableCell>
                   <TableCell>
                     <Chip
                       label={product.quantity}

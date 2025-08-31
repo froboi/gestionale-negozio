@@ -117,7 +117,7 @@ router.post('/login', loginValidation, async (req, res) => {
         username: user.username, 
         role: user.role 
       },
-      process.env.JWT_SECRET || 'your-jwt-secret',
+      process.env.JWT_SECRET || 'your-super-secret-jwt-key',
       { expiresIn: '24h' }
     );
 

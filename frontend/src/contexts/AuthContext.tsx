@@ -38,9 +38,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // Configure axios defaults
   useEffect(() => {
-    // Set the base URL for API calls
-    // Use relative URLs to work with nginx proxy
-    axios.defaults.baseURL = '';
+    // Remove any base URL so API calls go through nginx proxy
+    delete axios.defaults.baseURL;
     
     const token = localStorage.getItem('token');
     if (token) {

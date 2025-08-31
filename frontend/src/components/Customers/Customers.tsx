@@ -87,8 +87,6 @@ const Customers: React.FC = () => {
     postal_code: ''
   });
 
-  const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
-
   useEffect(() => {
     fetchCustomers();
   }, [page, rowsPerPage, searchTerm]);
@@ -97,7 +95,7 @@ const Customers: React.FC = () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_BASE_URL}/customers`, {
+      const response = await axios.get('/api/customers', {
         params: {
           page: page + 1,
           limit: rowsPerPage,
@@ -163,8 +161,8 @@ const Customers: React.FC = () => {
     try {
       const token = localStorage.getItem('token');
       const url = editingCustomer 
-        ? `${API_BASE_URL}/customers/${editingCustomer.id}`
-        : `${API_BASE_URL}/customers`;
+        ? `/api/customers/${editingCustomer.id}`
+        : '/api/customers';
       
       const method = editingCustomer ? 'put' : 'post';
       
@@ -185,7 +183,7 @@ const Customers: React.FC = () => {
     if (window.confirm('Sei sicuro di voler eliminare questo cliente?')) {
       try {
         const token = localStorage.getItem('token');
-        await axios.delete(`${API_BASE_URL}/customers/${customerId}`, {
+        await axios.delete(`/api/customers/${customerId}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         
@@ -198,11 +196,11 @@ const Customers: React.FC = () => {
     }
   };
 
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amount: number | null | undefined) => {
     return new Intl.NumberFormat('it-IT', {
       style: 'currency',
       currency: 'EUR'
-    }).format(amount);
+    }).format(amount || 0);
   };
 
   const formatDate = (dateString?: string) => {
@@ -266,7 +264,7 @@ const Customers: React.FC = () => {
             <CardContent sx={{ textAlign: 'center' }}>
               <Typography variant="h6">Vendite Totali</Typography>
               <Typography variant="h4" color="success.main">
-                {formatCurrency(customers.reduce((sum, c) => sum + c.total_spent, 0))}
+                {formatCurrency(customers.reduce((sum, c) => sum + (c.total_spent || 0), 0))}
               </Typography>
             </CardContent>
           </Card>
@@ -359,7 +357,7 @@ const Customers: React.FC = () => {
                 </TableCell>
                 <TableCell align="right">
                   <Chip 
-                    label={customer.loyalty_points.toLocaleString()} 
+                    label={(customer.loyalty_points || 0).toLocaleString()} 
                     color="warning" 
                     variant="outlined"
                     size="small"

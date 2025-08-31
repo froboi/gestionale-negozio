@@ -138,7 +138,7 @@ router.get('/:id', param('id').isInt(), async (req, res) => {
 
     // Get sale items
     const items = await executeQuery(`
-      SELECT si.*, p.name as product_name, p.sku, p.barcode
+      SELECT si.*, p.description as product_name, p.sku, p.barcode
       FROM sale_items si
       JOIN products p ON si.product_id = p.id
       WHERE si.sale_id = ?
@@ -311,7 +311,7 @@ router.get('/stats/dashboard', async (req, res) => {
 
     // Best selling products
     const bestProducts = await executeQuery(`
-      SELECT p.name, p.sku, SUM(si.quantity) as total_sold
+      SELECT p.description as name, p.sku, SUM(si.quantity) as total_sold
       FROM sale_items si
       JOIN products p ON si.product_id = p.id
       JOIN sales s ON si.sale_id = s.id
@@ -366,7 +366,7 @@ router.get('/:id/receipt', param('id').isInt(), async (req, res) => {
     }
 
     const items = await executeQuery(`
-      SELECT si.*, p.name as product_name, p.sku
+      SELECT si.*, p.description as product_name, p.sku
       FROM sale_items si
       JOIN products p ON si.product_id = p.id
       WHERE si.sale_id = ?

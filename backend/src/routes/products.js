@@ -35,15 +35,15 @@ router.get('/', async (req, res) => {
       size,
       color,
       low_stock,
-      sort_by = 'name',
+      sort_by = 'code',
       sort_order = 'ASC'
     } = req.query;
 
     const offset = (parseInt(page) - 1) * parseInt(limit);
-    const validSortColumns = ['name', 'code', 'price', 'quantity', 'created_at'];
+    const validSortColumns = ['code', 'price', 'quantity', 'created_at', 'brand', 'category'];
     const validSortOrder = ['ASC', 'DESC'];
     
-    const sortBy = validSortColumns.includes(sort_by) ? sort_by : 'name';
+    const sortBy = validSortColumns.includes(sort_by) ? sort_by : 'code';
     const sortOrder = validSortOrder.includes(sort_order.toUpperCase()) ? sort_order.toUpperCase() : 'ASC';
 
     let whereConditions = [];
@@ -51,7 +51,7 @@ router.get('/', async (req, res) => {
 
     // Build WHERE conditions
     if (search) {
-      whereConditions.push('(name LIKE ? OR description LIKE ? OR code LIKE ? OR brand LIKE ?)');
+      whereConditions.push('(description LIKE ? OR code LIKE ? OR brand LIKE ? OR supplier LIKE ?)');
       const searchTerm = `%${search}%`;
       queryParams.push(searchTerm, searchTerm, searchTerm, searchTerm);
     }
@@ -83,15 +83,18 @@ router.get('/', async (req, res) => {
     const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
 
     // Get products
+    const limitValue = parseInt(limit);
+    const offsetValue = parseInt(offset);
+    
     const products = await executeQuery(`
-      SELECT id, code, name, description, brand, category, size, color, 
+      SELECT id, code, description, brand, category, size, color, 
              price, cost, quantity, min_quantity, barcode, supplier, season,
              created_at, updated_at
       FROM products 
       ${whereClause}
       ORDER BY ${sortBy} ${sortOrder}
-      LIMIT ? OFFSET ?
-    `, [...queryParams, parseInt(limit), offset]);
+      LIMIT ${limitValue} OFFSET ${offsetValue}
+    `, queryParams);
 
     // Get total count for pagination
     const countResult = await executeQuery(`
@@ -320,7 +323,7 @@ router.get('/:id/label', param('id').isInt(), async (req, res) => {
     }
 
     const product = await executeQuery(
-      'SELECT code, name, size, barcode FROM products WHERE id = ?',
+      'SELECT code, description, size, barcode FROM products WHERE id = ?',
       [req.params.id]
     );
 
@@ -351,7 +354,7 @@ router.post('/labels/bulk', requireRole(['admin', 'manager', 'employee']), async
 
     const placeholders = productIds.map(() => '?').join(',');
     const products = await executeQuery(`
-      SELECT code, name, size, barcode FROM products 
+      SELECT code, description, size, barcode FROM products 
       WHERE id IN (${placeholders})
     `, productIds);
 
@@ -375,7 +378,7 @@ router.post('/labels/bulk', requireRole(['admin', 'manager', 'employee']), async
 router.get('/reports/low-stock', async (req, res) => {
   try {
     const products = await executeQuery(`
-      SELECT id, code, name, quantity, min_quantity
+      SELECT id, code, description, quantity, min_quantity
       FROM products 
       WHERE quantity <= min_quantity
       ORDER BY quantity ASC

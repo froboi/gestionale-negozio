@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
+// const rateLimit = require('express-rate-limit'); // Commented out for debugging
 const session = require('express-session');
 const csrf = require('csurf');
 const { body, validationResult } = require('express-validator');
@@ -43,6 +43,9 @@ const logger = winston.createLogger({
   ]
 });
 
+// Trust proxy for Docker/nginx
+app.set('trust proxy', 1);
+
 // Security middleware
 app.use(helmet({
   contentSecurityPolicy: {
@@ -55,7 +58,8 @@ app.use(helmet({
   },
 }));
 
-// Rate limiting
+// Rate limiting (commented out for debugging)
+/*
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // limit each IP to 100 requests per windowMs
@@ -73,10 +77,11 @@ const authLimiter = rateLimit({
 
 app.use(limiter);
 app.use('/api/auth/login', authLimiter);
+*/
 
 // CORS configuration
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: [process.env.FRONTEND_URL || 'http://localhost:8080', 'http://localhost:3000'],
   credentials: true,
   optionsSuccessStatus: 200
 }));

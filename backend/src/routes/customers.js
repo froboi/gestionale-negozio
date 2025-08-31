@@ -62,8 +62,8 @@ router.get('/', async (req, res) => {
       FROM customers 
       ${whereClause}
       ORDER BY ${sortBy} ${sortOrder}
-      LIMIT ? OFFSET ?
-    `, [...queryParams, parseInt(limit), offset]);
+      LIMIT ${parseInt(limit)} OFFSET ${offset}
+    `, queryParams);
 
     // Get total count for pagination
     const countResult = await executeQuery(`
@@ -204,8 +204,14 @@ router.post('/', customerValidation, async (req, res) => {
         address, city, postal_code
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `, [
-      first_name, last_name, email, phone, birth_date,
-      address, city, postal_code
+      first_name, 
+      last_name, 
+      email || null, 
+      phone || null, 
+      birth_date || null,
+      address || null, 
+      city || null, 
+      postal_code || null
     ]);
 
     const newCustomer = await executeQuery(

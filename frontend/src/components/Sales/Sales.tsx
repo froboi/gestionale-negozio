@@ -115,8 +115,6 @@ const Sales: React.FC = () => {
   const [discountAmount, setDiscountAmount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState('cash');
 
-  const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
-
   useEffect(() => {
     fetchSales();
     fetchStats();
@@ -133,7 +131,7 @@ const Sales: React.FC = () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_BASE_URL}/sales`, {
+      const response = await axios.get('/api/sales', {
         params: {
           page: page + 1,
           limit: rowsPerPage,
@@ -156,7 +154,7 @@ const Sales: React.FC = () => {
   const fetchStats = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_BASE_URL}/sales/stats/dashboard`, {
+      const response = await axios.get('/api/sales/stats/dashboard', {
         headers: { Authorization: `Bearer ${token}` }
       });
       setStats(response.data);
@@ -168,7 +166,7 @@ const Sales: React.FC = () => {
   const fetchProducts = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_BASE_URL}/products`, {
+      const response = await axios.get('/api/products', {
         params: { limit: 1000 },
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -181,7 +179,7 @@ const Sales: React.FC = () => {
   const fetchCustomers = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_BASE_URL}/customers`, {
+      const response = await axios.get('/api/customers', {
         params: { limit: 1000 },
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -271,7 +269,7 @@ const Sales: React.FC = () => {
         payment_method: paymentMethod
       };
 
-      await axios.post(`${API_BASE_URL}/sales`, newSale, {
+      await axios.post('/api/sales', newSale, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -288,7 +286,7 @@ const Sales: React.FC = () => {
   const downloadReceipt = async (saleId: number, receiptNumber: string) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_BASE_URL}/sales/${saleId}/receipt`, {
+      const response = await axios.get(`/api/sales/${saleId}/receipt`, {
         headers: { Authorization: `Bearer ${token}` },
         responseType: 'blob'
       });
