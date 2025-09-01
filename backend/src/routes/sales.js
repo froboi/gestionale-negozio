@@ -73,7 +73,8 @@ router.get('/', async (req, res) => {
 
     // Get sales with customer info
     const sales = await executeQuery(`
-      SELECT s.id, s.receipt_number, s.total_amount, s.discount_amount,
+      SELECT s.id, CONCAT('RC-', LPAD(s.id, 6, '0')) as receipt_number, 
+             s.total_amount, s.discount_amount, s.final_amount,
              s.payment_method, s.created_at, s.customer_id,
              CONCAT(c.first_name, ' ', c.last_name) as customer_name,
              COUNT(si.id) as items_count
@@ -186,22 +187,22 @@ router.post('/', saleValidation, async (req, res) => {
     try {
       // Create sale
       const saleResult = await executeQuery(`
-        INSERT INTO sales (customer_id, total_amount, discount_amount, payment_method, receipt_number)
-        VALUES (?, ?, ?, ?, ?)
-      `, [customer_id || null, total_amount, discount_amount, payment_method, receipt_number]);
+        INSERT INTO sales (customer_id, user_id, total_amount, discount_amount, final_amount, payment_method)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `, [customer_id || null, req.user.id, subtotal, discount_amount, total_amount, payment_method]);
 
       const saleId = saleResult.insertId;
 
       // Create sale items
       for (const item of items) {
         await executeQuery(`
-          INSERT INTO sale_items (sale_id, product_id, quantity, price, subtotal)
+          INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, subtotal)
           VALUES (?, ?, ?, ?, ?)
         `, [saleId, item.product_id, item.quantity, item.price, item.price * item.quantity]);
 
         // Update product stock
         await executeQuery(`
-          UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?
+          UPDATE products SET quantity = quantity - ? WHERE id = ?
         `, [item.quantity, item.product_id]);
       }
 

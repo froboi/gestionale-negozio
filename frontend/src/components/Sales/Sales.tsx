@@ -32,7 +32,9 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemSecondaryAction
+  ListItemSecondaryAction,
+  Checkbox,
+  FormControlLabel
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -63,10 +65,10 @@ interface Sale {
 
 interface Product {
   id: number;
-  name: string;
-  sku: string;
-  price: number;
-  stock_quantity: number;
+  description: string;
+  code: string;
+  price: string; // API restituisce stringa
+  quantity: number;
 }
 
 interface Customer {
@@ -112,7 +114,8 @@ const Sales: React.FC = () => {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [saleItems, setSaleItems] = useState<SaleItem[]>([]);
-  const [discountAmount, setDiscountAmount] = useState(0);
+  const [discountAmount, setDiscountAmount] = useState<string>(''); // Cambio a stringa per gestire campo vuoto
+  const [discountInEuro, setDiscountInEuro] = useState(false); // false = percentuale, true = euro
   const [paymentMethod, setPaymentMethod] = useState('cash');
 
   useEffect(() => {
@@ -193,7 +196,8 @@ const Sales: React.FC = () => {
     setSelectedCustomer(null);
     setSelectedProduct(null);
     setSaleItems([]);
-    setDiscountAmount(0);
+    setDiscountAmount(''); // Reset con stringa vuota
+    setDiscountInEuro(false);
     setPaymentMethod('cash');
     setOpenDialog(true);
   };
@@ -205,6 +209,7 @@ const Sales: React.FC = () => {
   const addProductToSale = () => {
     if (!selectedProduct) return;
 
+    const productPrice = parseFloat(selectedProduct.price);
     const existingItem = saleItems.find(item => item.product_id === selectedProduct.id);
     
     if (existingItem) {
@@ -218,10 +223,10 @@ const Sales: React.FC = () => {
       // Aggiungi nuovo prodotto
       const newItem: SaleItem = {
         product_id: selectedProduct.id,
-        product_name: selectedProduct.name,
+        product_name: selectedProduct.description,
         quantity: 1,
-        price: selectedProduct.price,
-        subtotal: selectedProduct.price
+        price: productPrice,
+        subtotal: productPrice
       };
       setSaleItems(prev => [...prev, newItem]);
     }
@@ -245,9 +250,37 @@ const Sales: React.FC = () => {
     setSaleItems(prev => prev.filter(item => item.product_id !== productId));
   };
 
+  // Gestione intelligente del campo sconto
+  const handleDiscountChange = (value: string) => {
+    // Permetti campo vuoto, numeri positivi e decimali
+    if (value === '' || /^\d*\.?\d*$/.test(value)) {
+      setDiscountAmount(value);
+    }
+  };
+
+  const handleDiscountBlur = () => {
+    // Validazione quando l'utente esce dal campo
+    const numValue = parseFloat(discountAmount);
+    if (isNaN(numValue) || numValue < 0) {
+      setDiscountAmount('0');
+    } else if (!discountInEuro && numValue > 100) {
+      // Per percentuali, limita a 100%
+      setDiscountAmount('100');
+    }
+  };
+
   const calculateTotal = () => {
     const subtotal = saleItems.reduce((sum, item) => sum + item.subtotal, 0);
-    return subtotal - discountAmount;
+    const discount = parseFloat(discountAmount) || 0; // Converte stringa a numero, default 0
+    
+    if (discountInEuro) {
+      // Sconto in euro
+      return Math.max(0, subtotal - discount);
+    } else {
+      // Sconto in percentuale
+      const discountValue = (subtotal * discount) / 100;
+      return Math.max(0, subtotal - discountValue);
+    }
   };
 
   const handleSubmitSale = async () => {
@@ -258,6 +291,14 @@ const Sales: React.FC = () => {
 
     try {
       const token = localStorage.getItem('token');
+      const subtotal = saleItems.reduce((sum, item) => sum + item.subtotal, 0);
+      const discount = parseFloat(discountAmount) || 0; // Converte stringa a numero, default 0
+      
+      // Calcola l'importo dello sconto in euro per il database
+      const discountAmountInEuro = discountInEuro 
+        ? discount 
+        : (subtotal * discount) / 100;
+
       const newSale: NewSale = {
         customer_id: selectedCustomer?.id,
         items: saleItems.map(item => ({
@@ -265,7 +306,7 @@ const Sales: React.FC = () => {
           quantity: item.quantity,
           price: item.price
         })),
-        discount_amount: discountAmount,
+        discount_amount: discountAmountInEuro,
         payment_method: paymentMethod
       };
 
@@ -277,7 +318,7 @@ const Sales: React.FC = () => {
       fetchStats();
       handleCloseDialog();
       setError(null);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Errore nella creazione della vendita:', error);
       setError('Errore nella creazione della vendita');
     }
@@ -563,7 +604,7 @@ const Sales: React.FC = () => {
                 <Autocomplete
                   sx={{ flexGrow: 1 }}
                   options={products}
-                  getOptionLabel={(option) => `${option.name} - ${option.sku} (€${option.price})`}
+                  getOptionLabel={(option) => `${option.description} - ${option.code} (€${parseFloat(option.price).toFixed(2)})`}
                   value={selectedProduct}
                   onChange={(_, newValue) => setSelectedProduct(newValue)}
                   renderInput={(params) => (
@@ -638,10 +679,27 @@ const Sales: React.FC = () => {
                 label="Sconto"
                 type="number"
                 value={discountAmount}
-                onChange={(e) => setDiscountAmount(Math.max(0, parseFloat(e.target.value) || 0))}
+                onChange={(e) => handleDiscountChange(e.target.value)}
+                onBlur={handleDiscountBlur}
+                placeholder="0"
                 InputProps={{
-                  startAdornment: <InputAdornment position="start">€</InputAdornment>,
+                  startAdornment: <InputAdornment position="start">{discountInEuro ? '€' : '%'}</InputAdornment>,
                 }}
+                inputProps={{
+                  min: 0,
+                  max: discountInEuro ? undefined : 100,
+                  step: discountInEuro ? 0.01 : 1
+                }}
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={discountInEuro}
+                    onChange={(e) => setDiscountInEuro(e.target.checked)}
+                  />
+                }
+                label="Sconto in Euro"
+                sx={{ mt: 1 }}
               />
             </Grid>
             
