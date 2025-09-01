@@ -109,6 +109,7 @@ const Sales: React.FC = () => {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [totalSales, setTotalSales] = useState(0);
   const [stats, setStats] = useState<any>(null);
+  const [purchaseStats, setPurchaseStats] = useState<any>(null);
 
   // Stato per la nuova vendita
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -121,6 +122,7 @@ const Sales: React.FC = () => {
   useEffect(() => {
     fetchSales();
     fetchStats();
+    fetchPurchaseStats();
   }, [page, rowsPerPage, searchTerm]);
 
   useEffect(() => {
@@ -163,6 +165,18 @@ const Sales: React.FC = () => {
       setStats(response.data);
     } catch (error) {
       console.error('Errore nel caricamento delle statistiche:', error);
+    }
+  };
+
+  const fetchPurchaseStats = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get('/api/sales/stats/purchases', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setPurchaseStats(response.data);
+    } catch (error) {
+      console.error('Errore nel caricamento delle statistiche acquisti:', error);
     }
   };
 
@@ -316,6 +330,7 @@ const Sales: React.FC = () => {
 
       fetchSales();
       fetchStats();
+      fetchPurchaseStats();
       handleCloseDialog();
       setError(null);
     } catch (error: any) {
@@ -449,6 +464,61 @@ const Sales: React.FC = () => {
             </Card>
           </Grid>
         </Grid>
+      )}
+
+      {/* Statistiche Acquisti */}
+      {purchaseStats && (
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="h6" sx={{ mb: 2, color: 'text.secondary' }}>
+            Statistiche Acquisti
+          </Typography>
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={3}>
+              <Card>
+                <CardContent sx={{ textAlign: 'center' }}>
+                  <SalesIcon sx={{ fontSize: 40, color: 'primary.main', mb: 1 }} />
+                  <Typography variant="h6">Acquisti Oggi</Typography>
+                  <Typography variant="h4" color="primary">{purchaseStats.todayPurchases.count}</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {formatCurrency(purchaseStats.todayPurchases.total)}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={3}>
+              <Card>
+                <CardContent sx={{ textAlign: 'center' }}>
+                  <TrendingIcon sx={{ fontSize: 40, color: 'success.main', mb: 1 }} />
+                  <Typography variant="h6">Acquisti del Mese</Typography>
+                  <Typography variant="h4" color="success">{purchaseStats.monthPurchases.count}</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {formatCurrency(purchaseStats.monthPurchases.total)}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={3}>
+              <Card>
+                <CardContent sx={{ textAlign: 'center' }}>
+                  <EuroIcon sx={{ fontSize: 40, color: 'warning.main', mb: 1 }} />
+                  <Typography variant="h6">Spesa Media</Typography>
+                  <Typography variant="h4" color="warning.main">
+                    {formatCurrency(purchaseStats.averagePurchase)}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={3}>
+              <Card>
+                <CardContent sx={{ textAlign: 'center' }}>
+                  <CardIcon sx={{ fontSize: 40, color: 'error.main', mb: 1 }} />
+                  <Typography variant="h6">Spesa più Alta</Typography>
+                  <Typography variant="h4" color="error">{formatCurrency(purchaseStats.highestPurchase)}</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+        </Box>
       )}
 
       {/* Ricerca */}

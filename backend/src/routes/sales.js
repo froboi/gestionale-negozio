@@ -181,15 +181,11 @@ router.post('/', saleValidation, async (req, res) => {
     const timeStr = date.getTime().toString().slice(-4);
     const receipt_number = `${dateStr}${timeStr}`;
 
-    // Start transaction
-    await executeQuery('START TRANSACTION');
-
-    try {
-      // Create sale
-      const saleResult = await executeQuery(`
-        INSERT INTO sales (customer_id, user_id, total_amount, discount_amount, final_amount, payment_method)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `, [customer_id || null, req.user.id, subtotal, discount_amount, total_amount, payment_method]);
+    // Create sale
+    const saleResult = await executeQuery(`
+      INSERT INTO sales (customer_id, user_id, total_amount, discount_amount, final_amount, payment_method)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `, [customer_id || null, req.user.id, subtotal, discount_amount, total_amount, payment_method]);
 
       const saleId = saleResult.insertId;
 
@@ -218,8 +214,6 @@ router.post('/', saleValidation, async (req, res) => {
         `, [loyaltyPoints, total_amount, customer_id]);
       }
 
-      await executeQuery('COMMIT');
-
       // Get complete sale data
       const completeSale = await executeQuery(`
         SELECT s.*, CONCAT(c.first_name, ' ', c.last_name) as customer_name
@@ -234,14 +228,9 @@ router.post('/', saleValidation, async (req, res) => {
       });
 
     } catch (error) {
-      await executeQuery('ROLLBACK');
-      throw error;
+      console.error('Create sale error:', error);
+      res.status(500).json({ error: 'Errore nella creazione della vendita' });
     }
-
-  } catch (error) {
-    console.error('Create sale error:', error);
-    res.status(500).json({ error: 'Errore nella creazione della vendita' });
-  }
 });
 
 // Update sale (limited to status and notes)
@@ -340,6 +329,56 @@ router.get('/stats/dashboard', async (req, res) => {
   } catch (error) {
     console.error('Get sales stats error:', error);
     res.status(500).json({ error: 'Errore nel recupero delle statistiche' });
+  }
+});
+
+// Purchase statistics endpoint
+router.get('/stats/purchases', async (req, res) => {
+  try {
+    // Today's purchases
+    const todayPurchases = await executeQuery(`
+      SELECT COUNT(*) as count, COALESCE(SUM(final_amount), 0) as total
+      FROM sales 
+      WHERE DATE(created_at) = CURDATE()
+    `);
+
+    // This month's purchases
+    const monthPurchases = await executeQuery(`
+      SELECT COUNT(*) as count, COALESCE(SUM(final_amount), 0) as total
+      FROM sales 
+      WHERE YEAR(created_at) = YEAR(NOW()) AND MONTH(created_at) = MONTH(NOW())
+    `);
+
+    // Average purchase amount
+    const avgPurchase = await executeQuery(`
+      SELECT COALESCE(AVG(final_amount), 0) as average
+      FROM sales 
+      WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+    `);
+
+    // Highest purchase amount
+    const highestPurchase = await executeQuery(`
+      SELECT COALESCE(MAX(final_amount), 0) as highest
+      FROM sales 
+      WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+    `);
+
+    res.json({
+      todayPurchases: {
+        count: todayPurchases[0].count,
+        total: parseFloat(todayPurchases[0].total)
+      },
+      monthPurchases: {
+        count: monthPurchases[0].count,
+        total: parseFloat(monthPurchases[0].total)
+      },
+      averagePurchase: parseFloat(avgPurchase[0].average),
+      highestPurchase: parseFloat(highestPurchase[0].highest)
+    });
+
+  } catch (error) {
+    console.error('Get purchase stats error:', error);
+    res.status(500).json({ error: 'Errore nel recupero delle statistiche degli acquisti' });
   }
 });
 
