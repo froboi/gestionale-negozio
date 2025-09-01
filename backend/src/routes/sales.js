@@ -39,6 +39,17 @@ router.get('/', async (req, res) => {
     const sortBy = validSortColumns.includes(sort_by) ? sort_by : 'created_at';
     const sortOrder = validSortOrder.includes(sort_order.toUpperCase()) ? sort_order.toUpperCase() : 'DESC';
 
+    // Map sort columns to actual column names in query
+    const sortColumnMap = {
+      'id': 's.id',
+      'total_amount': 's.total_amount',
+      'created_at': 's.created_at',
+      'customer_name': 'customer_name'
+    };
+    const actualSortBy = sortColumnMap[sortBy] || 's.created_at';
+    
+    console.log('Debug - sortBy:', sortBy, 'actualSortBy:', actualSortBy, 'sortOrder:', sortOrder);
+
     let whereConditions = [];
     let queryParams = [];
 
@@ -71,8 +82,8 @@ router.get('/', async (req, res) => {
 
     const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
 
-    // Get sales with customer info
-    const sales = await executeQuery(`
+    // Build the main query separating dynamic parts from prepared statement parts
+    const baseQuery = `
       SELECT s.id, CONCAT('RC-', LPAD(s.id, 6, '0')) as receipt_number, 
              s.total_amount, s.discount_amount, s.final_amount,
              s.payment_method, s.created_at, s.customer_id,
@@ -80,14 +91,24 @@ router.get('/', async (req, res) => {
              COUNT(si.id) as items_count
       FROM sales s
       LEFT JOIN customers c ON s.customer_id = c.id
-      LEFT JOIN sale_items si ON s.id = si.sale_id
-      ${whereClause}
-      GROUP BY s.id
-      ORDER BY ${sortBy} ${sortOrder}
-      LIMIT ? OFFSET ?
-    `, [...queryParams, parseInt(limit), offset]);
+      LEFT JOIN sale_items si ON s.id = si.sale_id`;
+    
+    // Costruiamo la query finale concatenando le stringhe (NON usando prepared statements per evitare errori MySQL2)
+    let finalQuery = baseQuery;
 
-    // Get total count for pagination
+    if (whereClause) {
+      finalQuery += ` ${whereClause}`;
+    }
+
+    finalQuery += ' GROUP BY s.id';
+    finalQuery += ` ORDER BY ${actualSortBy} ${sortOrder}`;
+    finalQuery += ` LIMIT ${parseInt(limit)} OFFSET ${offset}`;
+
+    console.log('Debug - Final query:', finalQuery);
+    console.log('Debug - Query params (only for WHERE):', queryParams);
+
+    // Get sales with customer info - solo i parametri per WHERE, non LIMIT/OFFSET
+    const sales = await executeQuery(finalQuery, queryParams);    // Get total count for pagination
     const countResult = await executeQuery(`
       SELECT COUNT(DISTINCT s.id) as total 
       FROM sales s
@@ -139,7 +160,7 @@ router.get('/:id', param('id').isInt(), async (req, res) => {
 
     // Get sale items
     const items = await executeQuery(`
-      SELECT si.*, p.description as product_name, p.sku, p.barcode
+      SELECT si.*, p.description as product_name, p.code, p.barcode
       FROM sale_items si
       JOIN products p ON si.product_id = p.id
       WHERE si.sale_id = ?
@@ -301,7 +322,7 @@ router.get('/stats/dashboard', async (req, res) => {
 
     // Best selling products
     const bestProducts = await executeQuery(`
-      SELECT p.description as name, p.sku, SUM(si.quantity) as total_sold
+      SELECT p.description as name, p.code, SUM(si.quantity) as total_sold
       FROM sale_items si
       JOIN products p ON si.product_id = p.id
       JOIN sales s ON si.sale_id = s.id
@@ -406,7 +427,7 @@ router.get('/:id/receipt', param('id').isInt(), async (req, res) => {
     }
 
     const items = await executeQuery(`
-      SELECT si.*, p.description as product_name, p.sku
+      SELECT si.*, p.description as product_name, p.code
       FROM sale_items si
       JOIN products p ON si.product_id = p.id
       WHERE si.sale_id = ?
