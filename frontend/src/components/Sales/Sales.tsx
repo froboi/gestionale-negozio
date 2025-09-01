@@ -39,14 +39,14 @@ import {
 import {
   Add as AddIcon,
   Receipt as ReceiptIcon,
-  Delete as DeleteIcon,
   Search as SearchIcon,
   ShoppingCart as SalesIcon,
   Euro as EuroIcon,
   CreditCard as CardIcon,
   TrendingUp as TrendingIcon,
   Remove as RemoveIcon,
-  GetApp as DownloadIcon
+  Edit as EditIcon,
+  Delete as DeleteIcon
 } from '@mui/icons-material';
 import axios from 'axios';
 
@@ -108,7 +108,6 @@ const Sales: React.FC = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [totalSales, setTotalSales] = useState(0);
-  const [stats, setStats] = useState<any>(null);
   const [purchaseStats, setPurchaseStats] = useState<any>(null);
 
   // Stato per la nuova vendita
@@ -119,9 +118,16 @@ const Sales: React.FC = () => {
   const [discountInEuro, setDiscountInEuro] = useState(false); // false = percentuale, true = euro
   const [paymentMethod, setPaymentMethod] = useState('cash');
 
+  // Stati per la modifica vendita
+  const [editingSale, setEditingSale] = useState<Sale | null>(null);
+  const [openEditDialog, setOpenEditDialog] = useState(false);
+  const [editSaleItems, setEditSaleItems] = useState<SaleItem[]>([]);
+  const [editDiscountAmount, setEditDiscountAmount] = useState<string>('');
+  const [editDiscountInEuro, setEditDiscountInEuro] = useState(false);
+  const [editPaymentMethod, setEditPaymentMethod] = useState('cash');
+
   useEffect(() => {
     fetchSales();
-    fetchStats();
     fetchPurchaseStats();
   }, [page, rowsPerPage, searchTerm]);
 
@@ -153,18 +159,6 @@ const Sales: React.FC = () => {
       setError('Errore nel caricamento delle vendite');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchStats = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get('/api/sales/stats/dashboard', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setStats(response.data);
-    } catch (error) {
-      console.error('Errore nel caricamento delle statistiche:', error);
     }
   };
 
@@ -329,7 +323,6 @@ const Sales: React.FC = () => {
       });
 
       fetchSales();
-      fetchStats();
       fetchPurchaseStats();
       handleCloseDialog();
       setError(null);
@@ -339,24 +332,139 @@ const Sales: React.FC = () => {
     }
   };
 
-  const downloadReceipt = async (saleId: number, receiptNumber: string) => {
+  const handleEdit = async (sale: Sale) => {
+    try {
+      console.log('Editing sale:', sale); // Debug
+      const token = localStorage.getItem('token');
+      
+      if (!token) {
+        setError('Token di autenticazione mancante');
+        return;
+      }
+      
+      // Carica i dettagli della vendita con i suoi items
+      const response = await axios.get(`/api/sales/${sale.id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      console.log('Sale details response:', response.data); // Debug
+      const saleDetails = response.data;
+      
+      // Verifica che i dati siano validi
+      if (!saleDetails) {
+        setError('Dati della vendita non validi');
+        return;
+      }
+      
+      // Mappa correttamente gli items per il dialog di modifica
+      const mappedItems = (saleDetails.items || []).map((item: any) => ({
+        product_id: item.product_id,
+        product_name: item.product_name || item.description || 'Prodotto sconosciuto',
+        quantity: parseInt(item.quantity) || 1,
+        price: parseFloat(item.price) || 0,
+        subtotal: (parseInt(item.quantity) || 1) * (parseFloat(item.price) || 0)
+      }));
+      
+      console.log('Mapped items:', mappedItems); // Debug
+      
+      setEditingSale(sale);
+      setEditSaleItems(mappedItems);
+      setEditDiscountAmount(sale.discount_amount ? sale.discount_amount.toString() : '');
+      setEditDiscountInEuro(true); // Assumiamo che lo sconto salvato sia in euro
+      setEditPaymentMethod(sale.payment_method || 'cash');
+      
+      // Carica anche prodotti e clienti se necessario
+      if (products.length === 0) {
+        console.log('Loading products...'); // Debug
+        await fetchProducts();
+      }
+      if (customers.length === 0) {
+        console.log('Loading customers...'); // Debug
+        await fetchCustomers();
+      }
+      
+      setOpenEditDialog(true);
+      
+    } catch (error: any) {
+      console.error('Error loading sale details:', error);
+      setError(`Errore nel caricamento dei dettagli della vendita: ${error.message || 'Errore sconosciuto'}`);
+    }
+  };
+
+  const handleDelete = async (saleId: number) => {
+    if (window.confirm('Sei sicuro di voler eliminare questa vendita?')) {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await axios.delete(`/api/sales/${saleId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        if (response.status === 200) {
+          // Reload the sales data
+          fetchSales();
+          fetchPurchaseStats();
+        } else {
+          setError('Errore durante l\'eliminazione della vendita');
+        }
+      } catch (error) {
+        console.error('Error deleting sale:', error);
+        setError('Errore durante l\'eliminazione della vendita');
+      }
+    }
+  };
+
+  const handleCloseEditDialog = () => {
+    setOpenEditDialog(false);
+    setEditingSale(null);
+    setEditSaleItems([]);
+    setEditDiscountAmount('');
+    setEditDiscountInEuro(false);
+    setEditPaymentMethod('cash');
+    setError(null);
+  };
+
+  const handleUpdateSale = async () => {
+    if (!editingSale || editSaleItems.length === 0) {
+      setError('Aggiungi almeno un prodotto alla vendita');
+      return;
+    }
+
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`/api/sales/${saleId}/receipt`, {
-        headers: { Authorization: `Bearer ${token}` },
-        responseType: 'blob'
+      
+      // Calcola sconto in euro
+      const subtotal = editSaleItems.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+      let discountAmountInEuro = 0;
+      
+      if (editDiscountAmount) {
+        if (editDiscountInEuro) {
+          discountAmountInEuro = parseFloat(editDiscountAmount);
+        } else {
+          discountAmountInEuro = subtotal * (parseFloat(editDiscountAmount) / 100);
+        }
+      }
+
+      const updatedSale = {
+        items: editSaleItems.map(item => ({
+          product_id: item.product_id,
+          quantity: item.quantity,
+          price: item.price
+        })),
+        discount_amount: discountAmountInEuro,
+        payment_method: editPaymentMethod
+      };
+
+      await axios.put(`/api/sales/${editingSale.id}`, updatedSale, {
+        headers: { Authorization: `Bearer ${token}` }
       });
 
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `ricevuta-${receiptNumber}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } catch (error) {
-      console.error('Errore nel download della ricevuta:', error);
-      setError('Errore nel download della ricevuta');
+      fetchSales();
+      fetchPurchaseStats();
+      handleCloseEditDialog();
+      setError(null);
+    } catch (error: any) {
+      console.error('Errore nella modifica della vendita:', error);
+      setError('Errore nella modifica della vendita');
     }
   };
 
@@ -416,56 +524,6 @@ const Sales: React.FC = () => {
         </Alert>
       )}
 
-      {/* Statistiche */}
-      {stats && (
-        <Grid container spacing={2} sx={{ mb: 3 }}>
-          <Grid item xs={12} sm={3}>
-            <Card>
-              <CardContent sx={{ textAlign: 'center' }}>
-                <SalesIcon sx={{ fontSize: 40, color: 'primary.main', mb: 1 }} />
-                <Typography variant="h6">Vendite Oggi</Typography>
-                <Typography variant="h4" color="primary">{stats.today.count}</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {formatCurrency(stats.today.total)}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={3}>
-            <Card>
-              <CardContent sx={{ textAlign: 'center' }}>
-                <TrendingIcon sx={{ fontSize: 40, color: 'success.main', mb: 1 }} />
-                <Typography variant="h6">Vendite 30gg</Typography>
-                <Typography variant="h4" color="success">{stats.period.count}</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {formatCurrency(stats.period.total)}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={3}>
-            <Card>
-              <CardContent sx={{ textAlign: 'center' }}>
-                <EuroIcon sx={{ fontSize: 40, color: 'warning.main', mb: 1 }} />
-                <Typography variant="h6">Media per Vendita</Typography>
-                <Typography variant="h4" color="warning.main">
-                  {formatCurrency(stats.period.count > 0 ? stats.period.total / stats.period.count : 0)}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={3}>
-            <Card>
-              <CardContent sx={{ textAlign: 'center' }}>
-                <CardIcon sx={{ fontSize: 40, color: 'info.main', mb: 1 }} />
-                <Typography variant="h6">Totale Vendite</Typography>
-                <Typography variant="h4" color="info">{totalSales}</Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
-      )}
-
       {/* Statistiche Acquisti */}
       {purchaseStats && (
         <Box sx={{ mb: 3 }}>
@@ -477,10 +535,12 @@ const Sales: React.FC = () => {
               <Card>
                 <CardContent sx={{ textAlign: 'center' }}>
                   <SalesIcon sx={{ fontSize: 40, color: 'primary.main', mb: 1 }} />
-                  <Typography variant="h6">Acquisti Oggi</Typography>
-                  <Typography variant="h4" color="primary">{purchaseStats.todayPurchases.count}</Typography>
+                  <Typography variant="h6">Vendite Oggi</Typography>
+                  <Typography variant="h4" color="primary">
+                    {purchaseStats?.todaySales?.count || 0}
+                  </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    {formatCurrency(purchaseStats.todayPurchases.total)}
+                    {formatCurrency(purchaseStats?.todaySales?.total || 0)}
                   </Typography>
                 </CardContent>
               </Card>
@@ -489,10 +549,12 @@ const Sales: React.FC = () => {
               <Card>
                 <CardContent sx={{ textAlign: 'center' }}>
                   <TrendingIcon sx={{ fontSize: 40, color: 'success.main', mb: 1 }} />
-                  <Typography variant="h6">Acquisti del Mese</Typography>
-                  <Typography variant="h4" color="success">{purchaseStats.monthPurchases.count}</Typography>
+                  <Typography variant="h6">Vendite del Mese</Typography>
+                  <Typography variant="h4" color="success">
+                    {purchaseStats?.monthSales?.count || 0}
+                  </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    {formatCurrency(purchaseStats.monthPurchases.total)}
+                    {formatCurrency(purchaseStats?.monthSales?.total || 0)}
                   </Typography>
                 </CardContent>
               </Card>
@@ -503,7 +565,7 @@ const Sales: React.FC = () => {
                   <EuroIcon sx={{ fontSize: 40, color: 'warning.main', mb: 1 }} />
                   <Typography variant="h6">Spesa Media</Typography>
                   <Typography variant="h4" color="warning.main">
-                    {formatCurrency(purchaseStats.averagePurchase)}
+                    {formatCurrency(purchaseStats?.averagePurchase || 0)}
                   </Typography>
                 </CardContent>
               </Card>
@@ -513,7 +575,9 @@ const Sales: React.FC = () => {
                 <CardContent sx={{ textAlign: 'center' }}>
                   <CardIcon sx={{ fontSize: 40, color: 'error.main', mb: 1 }} />
                   <Typography variant="h6">Spesa più Alta</Typography>
-                  <Typography variant="h4" color="error">{formatCurrency(purchaseStats.highestPurchase)}</Typography>
+                  <Typography variant="h4" color="error">
+                    {formatCurrency(purchaseStats?.highestPurchase || 0)}
+                  </Typography>
                 </CardContent>
               </Card>
             </Grid>
@@ -601,12 +665,20 @@ const Sales: React.FC = () => {
                 </TableCell>
                 <TableCell align="center">
                   <IconButton
-                    onClick={() => downloadReceipt(sale.id, sale.receipt_number)}
+                    onClick={() => handleEdit(sale)}
                     color="primary"
                     size="small"
-                    title="Scarica ricevuta"
+                    title="Modifica vendita"
                   >
-                    <DownloadIcon />
+                    <EditIcon />
+                  </IconButton>
+                  <IconButton
+                    onClick={() => handleDelete(sale.id)}
+                    color="error"
+                    size="small"
+                    title="Elimina vendita"
+                  >
+                    <DeleteIcon />
                   </IconButton>
                 </TableCell>
               </TableRow>
@@ -792,6 +864,153 @@ const Sales: React.FC = () => {
             disabled={saleItems.length === 0}
           >
             Completa Vendita
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog Modifica Vendita */}
+      <Dialog open={openEditDialog} onClose={handleCloseEditDialog} maxWidth="md" fullWidth>
+        <DialogTitle>Modifica Vendita</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            {error && (
+              <Grid item xs={12}>
+                <Typography color="error">{error}</Typography>
+              </Grid>
+            )}
+
+            {/* Metodo di Pagamento */}
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth>
+                <InputLabel>Metodo di Pagamento</InputLabel>
+                <Select
+                  value={editPaymentMethod}
+                  onChange={(e) => setEditPaymentMethod(e.target.value)}
+                  label="Metodo di Pagamento"
+                >
+                  <MenuItem value="cash">Contanti</MenuItem>
+                  <MenuItem value="card">Carta</MenuItem>
+                  <MenuItem value="bank_transfer">Bonifico</MenuItem>
+                  <MenuItem value="other">Altro</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+
+            {/* Lista prodotti nella vendita */}
+            <Grid item xs={12}>
+              <Typography variant="h6" gutterBottom>
+                Prodotti nella Vendita
+              </Typography>
+              {editSaleItems.length === 0 ? (
+                <Typography color="text.secondary">
+                  Nessun prodotto nella vendita
+                </Typography>
+              ) : (
+                <List>
+                  {editSaleItems.map((item, index) => (
+                    <ListItem key={index}>
+                      <ListItemText
+                        primary={item?.product_name || 'Prodotto sconosciuto'}
+                        secondary={`Quantità: ${item?.quantity || 0} - Prezzo: €${parseFloat((item?.price || 0).toString()).toFixed(2)}`}
+                      />
+                      <ListItemSecondaryAction>
+                        <Typography variant="subtitle1">
+                          €{((item?.quantity || 0) * parseFloat((item?.price || 0).toString())).toFixed(2)}
+                        </Typography>
+                        <IconButton
+                          edge="end"
+                          onClick={() => {
+                            const newItems = editSaleItems.filter((_, i) => i !== index);
+                            setEditSaleItems(newItems);
+                          }}
+                        >
+                          <RemoveIcon />
+                        </IconButton>
+                      </ListItemSecondaryAction>
+                    </ListItem>
+                  ))}
+                </List>
+              )}
+            </Grid>
+
+            {/* Sconto */}
+            <Grid item xs={12} md={8}>
+              <TextField
+                fullWidth
+                label="Sconto"
+                type="number"
+                value={editDiscountAmount}
+                onChange={(e) => setEditDiscountAmount(e.target.value)}
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      {editDiscountInEuro ? '€' : '%'}
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={editDiscountInEuro}
+                    onChange={(e) => setEditDiscountInEuro(e.target.checked)}
+                  />
+                }
+                label="Sconto in Euro"
+              />
+            </Grid>
+
+            {/* Riepilogo */}
+            <Grid item xs={12}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Riepilogo Modifica
+                  </Typography>
+                  <Typography>
+                    Subtotale: {formatCurrency(editSaleItems.reduce((sum, item) => {
+                      const quantity = item?.quantity || 0;
+                      const price = parseFloat((item?.price || 0).toString());
+                      return sum + (quantity * price);
+                    }, 0))}
+                  </Typography>
+                  <Typography>
+                    Sconto: {editDiscountAmount ? (editDiscountInEuro ? 
+                      formatCurrency(parseFloat(editDiscountAmount) || 0) : 
+                      `${editDiscountAmount}%`) : '0%'}
+                  </Typography>
+                  <Typography variant="h6">
+                    Totale: {formatCurrency((() => {
+                      const subtotal = editSaleItems.reduce((sum, item) => {
+                        const quantity = item?.quantity || 0;
+                        const price = parseFloat((item?.price || 0).toString());
+                        return sum + (quantity * price);
+                      }, 0);
+                      let discount = 0;
+                      if (editDiscountAmount) {
+                        const discountValue = parseFloat(editDiscountAmount) || 0;
+                        discount = editDiscountInEuro ? 
+                          discountValue : 
+                          subtotal * (discountValue / 100);
+                      }
+                      return Math.max(0, subtotal - discount);
+                    })())}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseEditDialog}>Annulla</Button>
+          <Button 
+            onClick={handleUpdateSale} 
+            variant="contained"
+            disabled={editSaleItems.length === 0}
+          >
+            Salva Modifiche
           </Button>
         </DialogActions>
       </Dialog>

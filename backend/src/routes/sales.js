@@ -356,42 +356,42 @@ router.get('/stats/dashboard', async (req, res) => {
 // Purchase statistics endpoint
 router.get('/stats/purchases', async (req, res) => {
   try {
-    // Today's purchases
-    const todayPurchases = await executeQuery(`
+    // Today's sales
+    const todaySales = await executeQuery(`
       SELECT COUNT(*) as count, COALESCE(SUM(final_amount), 0) as total
       FROM sales 
       WHERE DATE(created_at) = CURDATE()
     `);
 
-    // This month's purchases
-    const monthPurchases = await executeQuery(`
+    // This month's sales (current month only)
+    const monthSales = await executeQuery(`
       SELECT COUNT(*) as count, COALESCE(SUM(final_amount), 0) as total
       FROM sales 
       WHERE YEAR(created_at) = YEAR(NOW()) AND MONTH(created_at) = MONTH(NOW())
     `);
 
-    // Average purchase amount
+    // Average purchase amount (current month only)
     const avgPurchase = await executeQuery(`
       SELECT COALESCE(AVG(final_amount), 0) as average
       FROM sales 
-      WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+      WHERE YEAR(created_at) = YEAR(NOW()) AND MONTH(created_at) = MONTH(NOW())
     `);
 
-    // Highest purchase amount
+    // Highest purchase amount (current month only)
     const highestPurchase = await executeQuery(`
       SELECT COALESCE(MAX(final_amount), 0) as highest
       FROM sales 
-      WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+      WHERE YEAR(created_at) = YEAR(NOW()) AND MONTH(created_at) = MONTH(NOW())
     `);
 
     res.json({
-      todayPurchases: {
-        count: todayPurchases[0].count,
-        total: parseFloat(todayPurchases[0].total)
+      todaySales: {
+        count: todaySales[0].count,
+        total: parseFloat(todaySales[0].total)
       },
-      monthPurchases: {
-        count: monthPurchases[0].count,
-        total: parseFloat(monthPurchases[0].total)
+      monthSales: {
+        count: monthSales[0].count,
+        total: parseFloat(monthSales[0].total)
       },
       averagePurchase: parseFloat(avgPurchase[0].average),
       highestPurchase: parseFloat(highestPurchase[0].highest)
@@ -447,6 +447,40 @@ router.get('/:id/receipt', param('id').isInt(), async (req, res) => {
   } catch (error) {
     console.error('Generate receipt error:', error);
     res.status(500).json({ error: 'Errore nella generazione della ricevuta' });
+  }
+});
+
+// Delete sale
+router.delete('/:id', param('id').isInt(), async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const saleId = req.params.id;
+
+    // Check if sale exists
+    const saleResult = await executeQuery(
+      'SELECT id FROM sales WHERE id = ?',
+      [saleId]
+    );
+
+    if (saleResult.length === 0) {
+      return res.status(404).json({ error: 'Vendita non trovata' });
+    }
+
+    // Delete sale items first (due to foreign key constraint)
+    await executeQuery('DELETE FROM sale_items WHERE sale_id = ?', [saleId]);
+    
+    // Delete the sale
+    await executeQuery('DELETE FROM sales WHERE id = ?', [saleId]);
+
+    res.json({ message: 'Vendita eliminata con successo' });
+
+  } catch (error) {
+    console.error('Delete sale error:', error);
+    res.status(500).json({ error: 'Errore nell\'eliminazione della vendita' });
   }
 });
 
