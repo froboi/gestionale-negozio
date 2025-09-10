@@ -115,7 +115,7 @@ const Sales: React.FC = () => {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [saleItems, setSaleItems] = useState<SaleItem[]>([]);
   const [discountAmount, setDiscountAmount] = useState<string>(''); // Cambio a stringa per gestire campo vuoto
-  const [discountInEuro, setDiscountInEuro] = useState(false); // false = percentuale, true = euro
+  const [discountInEuro, setDiscountInEuro] = useState(false); // false = percentuale (default), true = euro
   const [paymentMethod, setPaymentMethod] = useState('cash');
 
   // Stati per la modifica vendita
@@ -242,6 +242,34 @@ const Sales: React.FC = () => {
     setSelectedProduct(null);
   };
 
+  const addProductToEditSale = () => {
+    if (!selectedProduct) return;
+
+    const productPrice = parseFloat(selectedProduct.price);
+    const existingItem = editSaleItems.find(item => item.product_id === selectedProduct.id);
+    
+    if (existingItem) {
+      // Incrementa quantità se il prodotto è già presente
+      setEditSaleItems(prev => prev.map(item => 
+        item.product_id === selectedProduct.id 
+          ? { ...item, quantity: item.quantity + 1, subtotal: (item.quantity + 1) * item.price }
+          : item
+      ));
+    } else {
+      // Aggiungi nuovo prodotto
+      const newItem: SaleItem = {
+        product_id: selectedProduct.id,
+        product_name: selectedProduct.description,
+        quantity: 1,
+        price: productPrice,
+        subtotal: productPrice
+      };
+      setEditSaleItems(prev => [...prev, newItem]);
+    }
+    
+    setSelectedProduct(null);
+  };
+
   const updateItemQuantity = (productId: number, newQuantity: number) => {
     if (newQuantity <= 0) {
       setSaleItems(prev => prev.filter(item => item.product_id !== productId));
@@ -361,16 +389,32 @@ const Sales: React.FC = () => {
         product_id: item.product_id,
         product_name: item.product_name || item.description || 'Prodotto sconosciuto',
         quantity: parseInt(item.quantity) || 1,
-        price: parseFloat(item.price) || 0,
-        subtotal: (parseInt(item.quantity) || 1) * (parseFloat(item.price) || 0)
+        price: parseFloat(item.unit_price) || 0,
+        subtotal: (parseInt(item.quantity) || 1) * (parseFloat(item.unit_price) || 0)
       }));
       
       console.log('Mapped items:', mappedItems); // Debug
       
       setEditingSale(sale);
       setEditSaleItems(mappedItems);
-      setEditDiscountAmount(sale.discount_amount ? sale.discount_amount.toString() : '');
-      setEditDiscountInEuro(true); // Assumiamo che lo sconto salvato sia in euro
+      
+      // Convertire lo sconto da euro a percentuale per il dialog di modifica
+      let discountForEdit = '';
+      const discountAmount = Number(sale.discount_amount);
+      const totalAmount = Number(sale.total_amount);
+      
+      console.log('Debug discount conversion:', { sale, discountAmount, totalAmount });
+      
+      if (sale.discount_amount && discountAmount > 0 && !isNaN(discountAmount) && !isNaN(totalAmount)) {
+        const totalWithoutDiscount = totalAmount + discountAmount;
+        const discountPercentage = (discountAmount / totalWithoutDiscount) * 100;
+        if (!isNaN(discountPercentage)) {
+          discountForEdit = discountPercentage.toFixed(2);
+        }
+      }
+      
+      setEditDiscountAmount(discountForEdit);
+      setEditDiscountInEuro(false); // Impostiamo lo sconto in percentuale per la modifica
       setEditPaymentMethod(sale.payment_method || 'cash');
       
       // Carica anche prodotti e clienti se necessario
@@ -436,13 +480,21 @@ const Sales: React.FC = () => {
       const subtotal = editSaleItems.reduce((sum, item) => sum + (item.quantity * item.price), 0);
       let discountAmountInEuro = 0;
       
-      if (editDiscountAmount) {
+      console.log('Edit discount values:', { 
+        editDiscountAmount, 
+        editDiscountInEuro, 
+        subtotal 
+      });
+      
+      if (editDiscountAmount && editDiscountAmount.trim() !== '') {
         if (editDiscountInEuro) {
           discountAmountInEuro = parseFloat(editDiscountAmount);
         } else {
           discountAmountInEuro = subtotal * (parseFloat(editDiscountAmount) / 100);
         }
       }
+      
+      console.log('Final discountAmountInEuro:', discountAmountInEuro);
 
       const updatedSale = {
         items: editSaleItems.map(item => ({
@@ -450,9 +502,16 @@ const Sales: React.FC = () => {
           quantity: item.quantity,
           price: item.price
         })),
-        discount_amount: discountAmountInEuro,
+        discount_amount: typeof discountAmountInEuro === 'number' && !isNaN(discountAmountInEuro) ? discountAmountInEuro : 0,
         payment_method: editPaymentMethod
       };
+
+      // Assicurati che discount_amount sia sempre un numero valido
+      if (updatedSale.discount_amount === null || updatedSale.discount_amount === undefined || isNaN(updatedSale.discount_amount)) {
+        updatedSale.discount_amount = 0;
+      }
+
+      console.log('Sending update to backend:', JSON.stringify(updatedSale, null, 2));
 
       await axios.put(`/api/sales/${editingSale.id}`, updatedSale, {
         headers: { Authorization: `Bearer ${token}` }
@@ -464,7 +523,8 @@ const Sales: React.FC = () => {
       setError(null);
     } catch (error: any) {
       console.error('Errore nella modifica della vendita:', error);
-      setError('Errore nella modifica della vendita');
+      const errorMessage = error.response?.data?.error || error.response?.data?.message || 'Errore nella modifica della vendita';
+      setError(errorMessage);
     }
   };
 
@@ -931,6 +991,41 @@ const Sales: React.FC = () => {
                   ))}
                 </List>
               )}
+            </Grid>
+
+            {/* Aggiungi Prodotto */}
+            <Grid item xs={12}>
+              <Typography variant="h6" gutterBottom>
+                Aggiungi Prodotto
+              </Typography>
+              <Grid container spacing={2} alignItems="center">
+                <Grid item xs={12} md={8}>
+                  <Autocomplete
+                    options={products}
+                    getOptionLabel={(option) => `${option.description} - €${option.price}`}
+                    value={selectedProduct}
+                    onChange={(_, newValue) => setSelectedProduct(newValue)}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Seleziona Prodotto"
+                        fullWidth
+                      />
+                    )}
+                  />
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <Button
+                    variant="contained"
+                    onClick={addProductToEditSale}
+                    disabled={!selectedProduct}
+                    startIcon={<AddIcon />}
+                    fullWidth
+                  >
+                    Aggiungi
+                  </Button>
+                </Grid>
+              </Grid>
             </Grid>
 
             {/* Sconto */}
