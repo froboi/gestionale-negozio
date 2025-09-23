@@ -122,8 +122,6 @@ const Sales: React.FC = () => {
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
   const [openEditDialog, setOpenEditDialog] = useState(false);
   const [editSaleItems, setEditSaleItems] = useState<SaleItem[]>([]);
-  const [editDiscountAmount, setEditDiscountAmount] = useState<string>('');
-  const [editDiscountInEuro, setEditDiscountInEuro] = useState(false);
   const [editPaymentMethod, setEditPaymentMethod] = useState('cash');
 
   useEffect(() => {
@@ -398,23 +396,8 @@ const Sales: React.FC = () => {
       setEditingSale(sale);
       setEditSaleItems(mappedItems);
       
-      // Convertire lo sconto da euro a percentuale per il dialog di modifica
-      let discountForEdit = '';
-      const discountAmount = Number(sale.discount_amount);
-      const totalAmount = Number(sale.total_amount);
+      console.log('Loading sale for edit, keeping original discount');
       
-      console.log('Debug discount conversion:', { sale, discountAmount, totalAmount });
-      
-      if (sale.discount_amount && discountAmount > 0 && !isNaN(discountAmount) && !isNaN(totalAmount)) {
-        const totalWithoutDiscount = totalAmount + discountAmount;
-        const discountPercentage = (discountAmount / totalWithoutDiscount) * 100;
-        if (!isNaN(discountPercentage)) {
-          discountForEdit = discountPercentage.toFixed(2);
-        }
-      }
-      
-      setEditDiscountAmount(discountForEdit);
-      setEditDiscountInEuro(false); // Impostiamo lo sconto in percentuale per la modifica
       setEditPaymentMethod(sale.payment_method || 'cash');
       
       // Carica anche prodotti e clienti se necessario
@@ -461,8 +444,6 @@ const Sales: React.FC = () => {
     setOpenEditDialog(false);
     setEditingSale(null);
     setEditSaleItems([]);
-    setEditDiscountAmount('');
-    setEditDiscountInEuro(false);
     setEditPaymentMethod('cash');
     setError(null);
   };
@@ -476,25 +457,7 @@ const Sales: React.FC = () => {
     try {
       const token = localStorage.getItem('token');
       
-      // Calcola sconto in euro
-      const subtotal = editSaleItems.reduce((sum, item) => sum + (item.quantity * item.price), 0);
-      let discountAmountInEuro = 0;
-      
-      console.log('Edit discount values:', { 
-        editDiscountAmount, 
-        editDiscountInEuro, 
-        subtotal 
-      });
-      
-      if (editDiscountAmount && editDiscountAmount.trim() !== '') {
-        if (editDiscountInEuro) {
-          discountAmountInEuro = parseFloat(editDiscountAmount);
-        } else {
-          discountAmountInEuro = subtotal * (parseFloat(editDiscountAmount) / 100);
-        }
-      }
-      
-      console.log('Final discountAmountInEuro:', discountAmountInEuro);
+      console.log('Updating sale without discount changes');
 
       const updatedSale = {
         items: editSaleItems.map(item => ({
@@ -502,14 +465,9 @@ const Sales: React.FC = () => {
           quantity: item.quantity,
           price: item.price
         })),
-        discount_amount: typeof discountAmountInEuro === 'number' && !isNaN(discountAmountInEuro) ? discountAmountInEuro : 0,
+        discount_amount: editingSale.discount_amount || 0, // Mantieni lo sconto originale
         payment_method: editPaymentMethod
       };
-
-      // Assicurati che discount_amount sia sempre un numero valido
-      if (updatedSale.discount_amount === null || updatedSale.discount_amount === undefined || isNaN(updatedSale.discount_amount)) {
-        updatedSale.discount_amount = 0;
-      }
 
       console.log('Sending update to backend:', JSON.stringify(updatedSale, null, 2));
 
@@ -1028,35 +986,6 @@ const Sales: React.FC = () => {
               </Grid>
             </Grid>
 
-            {/* Sconto */}
-            <Grid item xs={12} md={8}>
-              <TextField
-                fullWidth
-                label="Sconto"
-                type="number"
-                value={editDiscountAmount}
-                onChange={(e) => setEditDiscountAmount(e.target.value)}
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      {editDiscountInEuro ? '€' : '%'}
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={editDiscountInEuro}
-                    onChange={(e) => setEditDiscountInEuro(e.target.checked)}
-                  />
-                }
-                label="Sconto in Euro"
-              />
-            </Grid>
-
             {/* Riepilogo */}
             <Grid item xs={12}>
               <Card>
@@ -1072,9 +1001,7 @@ const Sales: React.FC = () => {
                     }, 0))}
                   </Typography>
                   <Typography>
-                    Sconto: {editDiscountAmount ? (editDiscountInEuro ? 
-                      formatCurrency(parseFloat(editDiscountAmount) || 0) : 
-                      `${editDiscountAmount}%`) : '0%'}
+                    Sconto originale: {editingSale?.discount_amount ? formatCurrency(editingSale.discount_amount) : '€0,00'}
                   </Typography>
                   <Typography variant="h6">
                     Totale: {formatCurrency((() => {
@@ -1083,14 +1010,8 @@ const Sales: React.FC = () => {
                         const price = parseFloat((item?.price || 0).toString());
                         return sum + (quantity * price);
                       }, 0);
-                      let discount = 0;
-                      if (editDiscountAmount) {
-                        const discountValue = parseFloat(editDiscountAmount) || 0;
-                        discount = editDiscountInEuro ? 
-                          discountValue : 
-                          subtotal * (discountValue / 100);
-                      }
-                      return Math.max(0, subtotal - discount);
+                      const originalDiscount = editingSale?.discount_amount || 0;
+                      return Math.max(0, subtotal - originalDiscount);
                     })())}
                   </Typography>
                 </CardContent>

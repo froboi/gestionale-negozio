@@ -80,10 +80,40 @@ router.get('/', async (req, res) => {
       queryParams.push(parseInt(customer_id));
     }
 
-    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+    // Build WHERE conditions with direct values (no prepared statements)
+    let whereClause = '';
+    if (whereConditions.length > 0) {
+      const processedConditions = [];
+      let paramIndex = 0;
+      
+      for (const condition of whereConditions) {
+        let processedCondition = condition;
+        
+        // Replace each ? with the actual value
+        if (condition.includes('?')) {
+          if (condition.includes('LIKE')) {
+            // For LIKE queries, wrap in quotes and escape
+            processedCondition = processedCondition.replace('?', `'%${queryParams[paramIndex].replace(/'/g, "\\'")}%'`);
+            paramIndex++;
+            processedCondition = processedCondition.replace('?', `'%${queryParams[paramIndex].replace(/'/g, "\\'")}%'`);
+            paramIndex++;
+            processedCondition = processedCondition.replace('?', `'%${queryParams[paramIndex].replace(/'/g, "\\'")}%'`);
+            paramIndex++;
+          } else {
+            // For other conditions, quote strings or use numbers directly
+            const param = queryParams[paramIndex];
+            const quotedParam = typeof param === 'string' ? `'${param.replace(/'/g, "\\'")}'` : param;
+            processedCondition = processedCondition.replace('?', quotedParam);
+            paramIndex++;
+          }
+        }
+        processedConditions.push(processedCondition);
+      }
+      whereClause = `WHERE ${processedConditions.join(' AND ')}`;
+    }
 
-    // Build the main query separating dynamic parts from prepared statement parts
-    const baseQuery = `
+    // Build the main query 
+    let finalQuery = `
       SELECT s.id, CONCAT('RC-', LPAD(s.id, 6, '0')) as receipt_number, 
              s.total_amount, s.discount_amount, s.final_amount,
              s.payment_method, s.created_at, s.customer_id,
@@ -93,11 +123,15 @@ router.get('/', async (req, res) => {
       LEFT JOIN customers c ON s.customer_id = c.id
       LEFT JOIN sale_items si ON s.id = si.sale_id`;
     
-    // Costruiamo la query finale concatenando le stringhe (NON usando prepared statements per evitare errori MySQL2)
-    let finalQuery = baseQuery;
+    let countQuery = `
+      SELECT COUNT(DISTINCT s.id) as total 
+      FROM sales s
+      LEFT JOIN customers c ON s.customer_id = c.id`;
 
+    // Add WHERE conditions if any
     if (whereClause) {
       finalQuery += ` ${whereClause}`;
+      countQuery += ` ${whereClause}`;
     }
 
     finalQuery += ' GROUP BY s.id';
@@ -105,16 +139,13 @@ router.get('/', async (req, res) => {
     finalQuery += ` LIMIT ${parseInt(limit)} OFFSET ${offset}`;
 
     console.log('Debug - Final query:', finalQuery);
-    console.log('Debug - Query params (only for WHERE):', queryParams);
+    console.log('Debug - Count query:', countQuery);
 
-    // Get sales with customer info - solo i parametri per WHERE, non LIMIT/OFFSET
-    const sales = await executeQuery(finalQuery, queryParams);    // Get total count for pagination
-    const countResult = await executeQuery(`
-      SELECT COUNT(DISTINCT s.id) as total 
-      FROM sales s
-      LEFT JOIN customers c ON s.customer_id = c.id
-      ${whereClause}
-    `, queryParams);
+    // Get sales with customer info - no parameters needed as we built the query directly
+    const sales = await executeQuery(finalQuery, []);
+    
+    // Get total count for pagination
+    const countResult = await executeQuery(countQuery, []);
 
     const totalSales = countResult[0].total;
     const totalPages = Math.ceil(totalSales / parseInt(limit));
