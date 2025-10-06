@@ -285,7 +285,89 @@ router.post('/', saleValidation, async (req, res) => {
     }
 });
 
+// Update sale - TEST VERSION 
+router.put('/:id', [
+  param('id').isInt(),
+  body('items').optional().isArray(),
+  body('items.*.product_id').optional().isInt(),
+  body('items.*.quantity').optional().isInt({ min: 1 }),
+  body('items.*.price').optional().isFloat({ min: 0 }),
+  body('payment_method').optional().isIn(['cash', 'card', 'bank_transfer', 'other'])
+], async (req, res) => {
+  try {
+    console.log('🔧 PUT /api/sales/:id - TESTING REINTRODUCTION');
+    console.log('Request body:', JSON.stringify(req.body, null, 2));
+    
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      console.log('❌ Validation errors:', errors.array());
+      return res.status(400).json({ errors: errors.array() });
+    }
 
+    const saleId = req.params.id;
+    const { items, payment_method } = req.body;
+
+    console.log('🚀 Starting transaction for sale:', saleId);
+    
+    // Test delle transazioni con executeTransactionCommand
+    await executeTransactionCommand('START TRANSACTION');
+
+    try {
+      // Solo aggiornamento semplice per ora
+      if (payment_method) {
+        console.log('📝 Updating payment method to:', payment_method);
+        
+        await executeQuery(`
+          UPDATE sales SET payment_method = ?, updated_at = NOW() WHERE id = ?
+        `, [payment_method, saleId]);
+      }
+
+      if (items && items.length > 0) {
+        console.log('🛒 Updating sale items...');
+        
+        // Rimuovi items esistenti
+        await executeQuery('DELETE FROM sale_items WHERE sale_id = ?', [saleId]);
+        
+        // Calcola nuovo totale
+        let subtotal = 0;
+        
+        // Aggiungi nuovi items
+        for (const item of items) {
+          const itemSubtotal = item.quantity * item.price;
+          subtotal += itemSubtotal;
+          
+          await executeQuery(`
+            INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, discount_percent, subtotal)
+            VALUES (?, ?, ?, ?, 0, ?)
+          `, [saleId, item.product_id, item.quantity, item.price, itemSubtotal]);
+        }
+
+        // Aggiorna totali vendita
+        await executeQuery(`
+          UPDATE sales SET total_amount = ?, final_amount = ?, updated_at = NOW() WHERE id = ?
+        `, [subtotal, subtotal, saleId]);
+      }
+
+      console.log('✅ Committing transaction...');
+      await executeTransactionCommand('COMMIT');
+      
+      console.log('🎉 Sale updated successfully!');
+      res.json({ message: 'Vendita aggiornata con successo' });
+
+    } catch (error) {
+      console.log('💥 Error in transaction, rolling back...');
+      await executeTransactionCommand('ROLLBACK');
+      throw error;
+    }
+
+  } catch (error) {
+    console.error('❌ Update sale error:', error);
+    res.status(500).json({ 
+      error: 'Errore nell\'aggiornamento della vendita',
+      details: error.message 
+    });
+  }
+});
 
 // Get sales statistics
 router.get('/stats/dashboard', async (req, res) => {

@@ -209,6 +209,20 @@ Per contributi o supporto personalizzato, contattare il team di sviluppo.
 
 ---
 
+## 📋 **Note di Versione**
+
+### Versione Attuale (Ottobre 2025)
+- ⚠️ **Modifica Vendite Temporaneamente Disabilitata**: La funzionalità di modifica delle vendite è stata rimossa per risolvere problemi tecnici con le transazioni MySQL2. La funzionalità sarà reimplementata con una architettura più robusta in una versione futura.
+- ✅ **Funzionalità Disponibili**: Creazione vendite, visualizzazione, eliminazione, gestione prodotti e clienti
+- 🔧 **Miglioramenti Tecnici**: Risolti problemi con prepared statements e comandi di transazione MySQL2
+
+### Pianificato per Prossimo Rilascio
+- 🔄 **Reimplementazione Modifica Vendite**: Sistema di modifica vendite completamente rinnovato
+- 🛡️ **Sicurezza Transazioni**: Meccanismo transazionale più robusto per operazioni complesse
+- 📊 **Audit Migliorato**: Tracciamento dettagliato delle modifiche alle vendite
+
+---
+
 ## 🎯 **Roadmap Future**
 
 - [ ] App mobile per inventory management
