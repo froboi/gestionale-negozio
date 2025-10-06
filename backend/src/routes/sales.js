@@ -318,7 +318,7 @@ router.put('/:id', [
         console.log('📝 Updating payment method to:', payment_method);
         
         await executeQuery(`
-          UPDATE sales SET payment_method = ?, updated_at = NOW() WHERE id = ?
+          UPDATE sales SET payment_method = ? WHERE id = ?
         `, [payment_method, saleId]);
       }
 
@@ -344,7 +344,7 @@ router.put('/:id', [
 
         // Aggiorna totali vendita
         await executeQuery(`
-          UPDATE sales SET total_amount = ?, final_amount = ?, updated_at = NOW() WHERE id = ?
+          UPDATE sales SET total_amount = ?, final_amount = ? WHERE id = ?
         `, [subtotal, subtotal, saleId]);
       }
 

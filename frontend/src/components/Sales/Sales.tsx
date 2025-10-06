@@ -45,6 +45,7 @@ import {
   CreditCard as CardIcon,
   TrendingUp as TrendingIcon,
   Remove as RemoveIcon,
+  Edit as EditIcon,
   Delete as DeleteIcon
 } from '@mui/icons-material';
 import axios from 'axios';
@@ -329,6 +330,170 @@ const Sales: React.FC = () => {
 
 
 
+  // Stati per la modifica vendita
+  const [editingSale, setEditingSale] = useState<Sale | null>(null);
+  const [openEditDialog, setOpenEditDialog] = useState(false);
+  const [editSaleItems, setEditSaleItems] = useState<SaleItem[]>([]);
+  const [editPaymentMethod, setEditPaymentMethod] = useState('cash');
+
+  // Funzione per aprire dialog di modifica
+  const handleEdit = async (sale: Sale) => {
+    try {
+      console.log('🔧 Opening edit dialog for sale:', sale.id);
+      const token = localStorage.getItem('token');
+      
+      if (!token) {
+        setError('Token di autenticazione mancante');
+        return;
+      }
+      
+      // Carica i dettagli della vendita
+      const response = await axios.get(`/api/sales/${sale.id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      const saleDetails = response.data;
+      console.log('📥 Sale details loaded:', saleDetails);
+      
+      // Mappa gli items per il dialog di modifica
+      const mappedItems = (saleDetails.items || []).map((item: any) => ({
+        product_id: item.product_id,
+        product_name: item.product_name || item.description || 'Prodotto sconosciuto',
+        quantity: parseInt(item.quantity) || 1,
+        price: parseFloat(item.unit_price) || 0,
+        subtotal: (parseInt(item.quantity) || 1) * (parseFloat(item.unit_price) || 0)
+      }));
+      
+      setEditingSale(sale);
+      setEditSaleItems(mappedItems);
+      setEditPaymentMethod(sale.payment_method || 'cash');
+      setOpenEditDialog(true);
+      setError(null);
+      
+    } catch (error: any) {
+      console.error('❌ Error loading sale details:', error);
+      setError(`Errore nel caricamento della vendita: ${error.response?.data?.error || error.message}`);
+    }
+  };
+
+  // TEST: Funzione per testare l'API di modifica
+  const handleTestEdit = async (sale: Sale) => {
+    try {
+      console.log('🧪 TESTING EDIT API for sale:', sale.id);
+      const token = localStorage.getItem('token');
+      
+      // Test semplice: cambio solo il metodo di pagamento
+      const testData = {
+        payment_method: sale.payment_method === 'cash' ? 'card' : 'cash'
+      };
+      
+      console.log('📤 Sending test data:', testData);
+      
+      const response = await axios.put(`/api/sales/${sale.id}`, testData, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      console.log('✅ Test response:', response.data);
+      
+      // Ricarica le vendite per vedere le modifiche
+      fetchSales();
+      setError(null);
+      
+    } catch (error: any) {
+      console.error('❌ Test edit error:', error);
+      setError(`Test modifica fallito: ${error.response?.data?.error || error.message}`);
+    }
+  };
+
+  // Funzioni per il dialog di modifica
+  const handleCloseEditDialog = () => {
+    setOpenEditDialog(false);
+    setEditingSale(null);
+    setEditSaleItems([]);
+    setEditPaymentMethod('cash');
+    setError(null);
+  };
+
+  const addProductToEditSale = () => {
+    if (!selectedProduct) return;
+
+    const productPrice = parseFloat(selectedProduct.price);
+    const existingItem = editSaleItems.find(item => item.product_id === selectedProduct.id);
+    
+    if (existingItem) {
+      // Incrementa quantità se il prodotto è già presente
+      setEditSaleItems(prev => prev.map(item => 
+        item.product_id === selectedProduct.id 
+          ? { ...item, quantity: item.quantity + 1, subtotal: (item.quantity + 1) * item.price }
+          : item
+      ));
+    } else {
+      // Aggiungi nuovo prodotto
+      const newItem: SaleItem = {
+        product_id: selectedProduct.id,
+        product_name: selectedProduct.description,
+        quantity: 1,
+        price: productPrice,
+        subtotal: productPrice
+      };
+      setEditSaleItems(prev => [...prev, newItem]);
+    }
+    
+    setSelectedProduct(null);
+  };
+
+  const removeEditItem = (productId: number) => {
+    setEditSaleItems(prev => prev.filter(item => item.product_id !== productId));
+  };
+
+  const updateEditItemQuantity = (productId: number, newQuantity: number) => {
+    if (newQuantity <= 0) {
+      removeEditItem(productId);
+    } else {
+      setEditSaleItems(prev => prev.map(item => 
+        item.product_id === productId 
+          ? { ...item, quantity: newQuantity, subtotal: newQuantity * item.price }
+          : item
+      ));
+    }
+  };
+
+  const handleUpdateSale = async () => {
+    if (!editingSale || editSaleItems.length === 0) {
+      setError('Aggiungi almeno un prodotto alla vendita');
+      return;
+    }
+
+    try {
+      console.log('🔄 Updating sale:', editingSale.id);
+      const token = localStorage.getItem('token');
+      
+      const updatedSale = {
+        items: editSaleItems.map(item => ({
+          product_id: item.product_id,
+          quantity: item.quantity,
+          price: item.price
+        })),
+        payment_method: editPaymentMethod
+      };
+
+      console.log('📤 Sending update:', JSON.stringify(updatedSale, null, 2));
+
+      await axios.put(`/api/sales/${editingSale.id}`, updatedSale, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      console.log('✅ Sale updated successfully');
+      fetchSales();
+      fetchPurchaseStats();
+      handleCloseEditDialog();
+      
+    } catch (error: any) {
+      console.error('❌ Error updating sale:', error);
+      setError(`Errore nella modifica della vendita: ${error.response?.data?.error || error.message}`);
+    }
+  };
+
   const handleDelete = async (saleId: number) => {
     if (window.confirm('Sei sicuro di voler eliminare questa vendita?')) {
       try {
@@ -552,6 +717,14 @@ const Sales: React.FC = () => {
                 </TableCell>
                 <TableCell align="center">
                   <IconButton
+                    onClick={() => handleEdit(sale)}
+                    color="primary"
+                    size="small"
+                    title="Modifica vendita"
+                  >
+                    <EditIcon />
+                  </IconButton>
+                  <IconButton
                     onClick={() => handleDelete(sale.id)}
                     color="error"
                     size="small"
@@ -747,7 +920,138 @@ const Sales: React.FC = () => {
         </DialogActions>
       </Dialog>
 
+      {/* Dialog Modifica Vendita */}
+      <Dialog open={openEditDialog} onClose={handleCloseEditDialog} maxWidth="md" fullWidth>
+        <DialogTitle>Modifica Vendita #{editingSale?.id}</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            {error && (
+              <Grid item xs={12}>
+                <Typography color="error">{error}</Typography>
+              </Grid>
+            )}
 
+            {/* Metodo di Pagamento */}
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth>
+                <InputLabel>Metodo di Pagamento</InputLabel>
+                <Select
+                  value={editPaymentMethod}
+                  onChange={(e) => setEditPaymentMethod(e.target.value)}
+                  label="Metodo di Pagamento"
+                >
+                  <MenuItem value="cash">Contanti</MenuItem>
+                  <MenuItem value="card">Carta</MenuItem>
+                  <MenuItem value="bank_transfer">Bonifico</MenuItem>
+                  <MenuItem value="other">Altro</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+
+            {/* Aggiungi Prodotto */}
+            <Grid item xs={12} md={6}>
+              <Box display="flex" gap={1} alignItems="center">
+                <Autocomplete
+                  sx={{ flexGrow: 1 }}
+                  options={products}
+                  getOptionLabel={(option) => `${option.description} - €${option.price}`}
+                  value={selectedProduct}
+                  onChange={(_, newValue) => setSelectedProduct(newValue)}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Aggiungi Prodotto"
+                      size="small"
+                    />
+                  )}
+                />
+                <Button
+                  variant="contained"
+                  onClick={addProductToEditSale}
+                  disabled={!selectedProduct}
+                  startIcon={<AddIcon />}
+                >
+                  Aggiungi
+                </Button>
+              </Box>
+            </Grid>
+
+            {/* Lista prodotti nella vendita */}
+            <Grid item xs={12}>
+              <Typography variant="h6" gutterBottom>
+                Prodotti nella Vendita ({editSaleItems.length})
+              </Typography>
+              {editSaleItems.length === 0 ? (
+                <Typography color="text.secondary" sx={{ py: 2 }}>
+                  Nessun prodotto nella vendita
+                </Typography>
+              ) : (
+                <List>
+                  {editSaleItems.map((item, index) => (
+                    <ListItem key={`${item.product_id}-${index}`} divider>
+                      <ListItemText
+                        primary={item.product_name}
+                        secondary={`Prezzo: €${item.price.toFixed(2)} - Subtotale: €${item.subtotal.toFixed(2)}`}
+                      />
+                      <Box display="flex" alignItems="center" gap={1}>
+                        <IconButton
+                          size="small"
+                          onClick={() => updateEditItemQuantity(item.product_id, item.quantity - 1)}
+                        >
+                          <RemoveIcon />
+                        </IconButton>
+                        <Typography sx={{ minWidth: 30, textAlign: 'center' }}>
+                          {item.quantity}
+                        </Typography>
+                        <IconButton
+                          size="small"
+                          onClick={() => updateEditItemQuantity(item.product_id, item.quantity + 1)}
+                        >
+                          <AddIcon />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => removeEditItem(item.product_id)}
+                          sx={{ ml: 1 }}
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      </Box>
+                    </ListItem>
+                  ))}
+                </List>
+              )}
+            </Grid>
+
+            {/* Riepilogo Totali */}
+            <Grid item xs={12}>
+              <Card sx={{ bgcolor: 'grey.50', p: 2 }}>
+                <Typography variant="h6" gutterBottom>
+                  Riepilogo Modifica
+                </Typography>
+                <Typography>
+                  Subtotale: {formatCurrency(editSaleItems.reduce((sum, item) => sum + item.subtotal, 0))}
+                </Typography>
+                <Typography variant="h6" sx={{ mt: 1 }}>
+                  Totale: {formatCurrency(editSaleItems.reduce((sum, item) => sum + item.subtotal, 0))}
+                </Typography>
+              </Card>
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseEditDialog}>Annulla</Button>
+          <Button 
+            onClick={handleUpdateSale} 
+            variant="contained"
+            disabled={editSaleItems.length === 0}
+            startIcon={<EditIcon />}
+          >
+            Salva Modifiche
+          </Button>
+        </DialogActions>
+      </Dialog>
 
     </Box>
   );
