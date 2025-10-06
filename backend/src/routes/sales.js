@@ -1,6 +1,6 @@
 const express = require('express');
 const { body, validationResult, param } = require('express-validator');
-const { executeQuery } = require('../database/connection');
+const { executeQuery, executeTransactionCommand } = require('../database/connection');
 const { requireRole } = require('../middleware/auth');
 const PDFService = require('../services/pdfService');
 
@@ -285,133 +285,7 @@ router.post('/', saleValidation, async (req, res) => {
     }
 });
 
-// Update sale (limited to status and notes)
-router.put('/:id', [
-  param('id').isInt(),
-  body('status').optional().isIn(['completed', 'cancelled', 'refunded']),
-  body('notes').optional().trim().escape(),
-  body('items').optional().isArray(),
-  body('items.*.product_id').optional().isInt(),
-  body('items.*.quantity').optional().isInt({ min: 1 }),
-  body('items.*.price').optional().isFloat({ min: 0 }),
-  body('discount_amount').optional().isFloat({ min: 0 }),
-  body('payment_method').optional().isIn(['cash', 'card', 'bank_transfer', 'other'])
-], async (req, res) => {
-  try {
-    console.log('PUT /api/sales/:id - Request body:', JSON.stringify(req.body, null, 2));
-    
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      console.log('Validation errors:', errors.array());
-      return res.status(400).json({ errors: errors.array() });
-    }
 
-    const saleId = req.params.id;
-    const { status, notes, items, discount_amount, payment_method } = req.body;
-
-    // Inizia una transazione per aggiornare vendita e item
-    await executeQuery('START TRANSACTION');
-
-    try {
-      // Se ci sono items, discount_amount, o payment_method, aggiorna completamente la vendita
-      if (items || discount_amount !== undefined || payment_method) {
-        
-        // Rimuovi tutti gli item esistenti
-        if (items) {
-          await executeQuery('DELETE FROM sale_items WHERE sale_id = ?', [saleId]);
-        }
-
-        // Calcola il nuovo totale
-        let subtotal = 0;
-        
-        if (items && items.length > 0) {
-          // Inserisci i nuovi item
-          for (const item of items) {
-            const itemSubtotal = item.quantity * item.price;
-            subtotal += itemSubtotal;
-            
-            await executeQuery(`
-              INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, discount_percent, subtotal)
-              VALUES (?, ?, ?, ?, 0, ?)
-            `, [saleId, item.product_id, item.quantity, item.price, itemSubtotal]);
-          }
-        }
-
-        // Calcola total_amount e final_amount
-        const discountAmount = discount_amount || 0;
-        const finalAmount = subtotal - discountAmount;
-
-        // Aggiorna la vendita principale
-        const updateFields = ['total_amount = ?', 'final_amount = ?', 'updated_at = NOW()'];
-        const updateValues = [subtotal, finalAmount];
-
-        if (discount_amount !== undefined) {
-          updateFields.push('discount_amount = ?');
-          updateValues.push(discountAmount);
-        }
-
-        if (payment_method) {
-          updateFields.push('payment_method = ?');
-          updateValues.push(payment_method);
-        }
-
-        if (status) {
-          updateFields.push('status = ?');
-          updateValues.push(status);
-        }
-
-        if (notes !== undefined) {
-          updateFields.push('notes = ?');
-          updateValues.push(notes);
-        }
-
-        updateValues.push(saleId);
-
-        await executeQuery(`
-          UPDATE sales SET ${updateFields.join(', ')} WHERE id = ?
-        `, updateValues);
-
-      } else {
-        // Aggiornamento semplice di status/notes
-        const updateFields = [];
-        const updateValues = [];
-
-        if (status) {
-          updateFields.push('status = ?');
-          updateValues.push(status);
-        }
-
-        if (notes !== undefined) {
-          updateFields.push('notes = ?');
-          updateValues.push(notes);
-        }
-
-        if (updateFields.length === 0) {
-          await executeQuery('ROLLBACK');
-          return res.status(400).json({ error: 'Nessun campo da aggiornare' });
-        }
-
-        updateFields.push('updated_at = NOW()');
-        updateValues.push(saleId);
-
-        await executeQuery(`
-          UPDATE sales SET ${updateFields.join(', ')} WHERE id = ?
-        `, updateValues);
-      }
-
-      await executeQuery('COMMIT');
-      res.json({ message: 'Vendita aggiornata con successo' });
-
-    } catch (error) {
-      await executeQuery('ROLLBACK');
-      throw error;
-    }
-
-  } catch (error) {
-    console.error('Update sale error:', error);
-    res.status(500).json({ error: 'Errore nell\'aggiornamento della vendita' });
-  }
-});
 
 // Get sales statistics
 router.get('/stats/dashboard', async (req, res) => {

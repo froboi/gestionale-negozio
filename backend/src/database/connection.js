@@ -58,6 +58,17 @@ async function executeQuery(query, params = []) {
   }
 }
 
+// Execute transaction commands (START TRANSACTION, COMMIT, ROLLBACK)
+async function executeTransactionCommand(command) {
+  try {
+    const [results] = await pool.query(command);
+    return results;
+  } catch (error) {
+    logger.error('Database transaction command error:', { error: error.message, command });
+    throw error;
+  }
+}
+
 // Transaction wrapper
 async function executeTransaction(queries) {
   const connection = await pool.getConnection();
@@ -85,6 +96,7 @@ async function executeTransaction(queries) {
 module.exports = {
   pool,
   executeQuery,
+  executeTransactionCommand,
   executeTransaction,
   testConnection
 };
