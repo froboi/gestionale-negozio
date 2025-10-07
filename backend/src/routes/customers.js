@@ -31,7 +31,7 @@ router.get('/', async (req, res) => {
     } = req.query;
 
     const offset = (parseInt(page) - 1) * parseInt(limit);
-    const validSortColumns = ['first_name', 'last_name', 'email', 'phone', 'birth_date', 'total_spent', 'loyalty_points', 'created_at'];
+    const validSortColumns = ['first_name', 'last_name', 'email', 'phone', 'birth_date', 'total_spent', 'loyalty_points', 'created_at', 'purchase_count'];
     const validSortOrder = ['ASC', 'DESC'];
     
     const sortBy = validSortColumns.includes(sort_by) ? sort_by : 'last_name';
@@ -42,32 +42,38 @@ router.get('/', async (req, res) => {
 
     // Build WHERE conditions
     if (search) {
-      whereConditions.push('(first_name LIKE ? OR last_name LIKE ? OR email LIKE ? OR phone LIKE ?)');
+      whereConditions.push('(c.first_name LIKE ? OR c.last_name LIKE ? OR c.email LIKE ? OR c.phone LIKE ?)');
       const searchTerm = `%${search}%`;
       queryParams.push(searchTerm, searchTerm, searchTerm, searchTerm);
     }
 
     if (birthday_month) {
-      whereConditions.push('MONTH(birth_date) = ?');
+      whereConditions.push('MONTH(c.birth_date) = ?');
       queryParams.push(parseInt(birthday_month));
     }
 
     const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
 
-    // Get customers
+    // Get customers with purchase count
     const customers = await executeQuery(`
-      SELECT id, first_name, last_name, email, phone, birth_date,
-             address, city, postal_code, loyalty_points, total_spent,
-             last_purchase, created_at, updated_at
-      FROM customers 
-      ${whereClause}
-      ORDER BY ${sortBy} ${sortOrder}
+      SELECT c.id, c.first_name, c.last_name, c.email, c.phone, c.birth_date,
+             c.address, c.city, c.postal_code, c.loyalty_points, c.total_spent,
+             c.last_purchase, c.created_at, c.updated_at,
+             COUNT(s.id) as purchase_count
+      FROM customers c
+      LEFT JOIN sales s ON c.id = s.customer_id
+      ${whereClause ? whereClause.replace('WHERE', 'WHERE c.') : ''}
+      GROUP BY c.id
+      ORDER BY ${sortBy === 'purchase_count' ? 'purchase_count' : `c.${sortBy}`} ${sortOrder}
       LIMIT ${parseInt(limit)} OFFSET ${offset}
     `, queryParams);
 
     // Get total count for pagination
     const countResult = await executeQuery(`
-      SELECT COUNT(*) as total FROM customers ${whereClause}
+      SELECT COUNT(DISTINCT c.id) as total 
+      FROM customers c
+      LEFT JOIN sales s ON c.id = s.customer_id
+      ${whereClause}
     `, queryParams);
 
     const totalCustomers = countResult[0].total;

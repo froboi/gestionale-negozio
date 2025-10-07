@@ -541,8 +541,8 @@ const Sales: React.FC = () => {
     const methods: { [key: string]: string } = {
       cash: 'Contanti',
       card: 'Carta',
-      bank_transfer: 'Bonifico',
-      other: 'Altro'
+      mixed: 'Misto',
+      satispay: 'Satispay'
     };
     return methods[method] || method;
   };
@@ -786,8 +786,8 @@ const Sales: React.FC = () => {
                 >
                   <MenuItem value="cash">Contanti</MenuItem>
                   <MenuItem value="card">Carta</MenuItem>
-                  <MenuItem value="bank_transfer">Bonifico</MenuItem>
-                  <MenuItem value="other">Altro</MenuItem>
+                  <MenuItem value="mixed">Misto</MenuItem>
+                  <MenuItem value="satispay">Satispay</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
@@ -942,8 +942,8 @@ const Sales: React.FC = () => {
                 >
                   <MenuItem value="cash">Contanti</MenuItem>
                   <MenuItem value="card">Carta</MenuItem>
-                  <MenuItem value="bank_transfer">Bonifico</MenuItem>
-                  <MenuItem value="other">Altro</MenuItem>
+                  <MenuItem value="mixed">Misto</MenuItem>
+                  <MenuItem value="satispay">Satispay</MenuItem>
                 </Select>
               </FormControl>
             </Grid>

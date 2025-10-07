@@ -14,7 +14,7 @@ const saleValidation = [
   body('items.*.quantity').isInt({ min: 1 }),
   body('items.*.price').isFloat({ min: 0 }),
   body('discount_amount').optional().isFloat({ min: 0 }),
-  body('payment_method').isIn(['cash', 'card', 'bank_transfer', 'other'])
+  body('payment_method').isIn(['cash', 'card', 'mixed', 'satispay'])
 ];
 
 // Get all sales with filtering and pagination
@@ -292,7 +292,7 @@ router.put('/:id', [
   body('items.*.product_id').optional().isInt(),
   body('items.*.quantity').optional().isInt({ min: 1 }),
   body('items.*.price').optional().isFloat({ min: 0 }),
-  body('payment_method').optional().isIn(['cash', 'card', 'bank_transfer', 'other'])
+  body('payment_method').optional().isIn(['cash', 'card', 'mixed', 'satispay'])
 ], async (req, res) => {
   try {
     console.log('🔧 PUT /api/sales/:id - TESTING REINTRODUCTION');

@@ -50,6 +50,7 @@ interface Customer {
   postal_code?: string;
   loyalty_points: number;
   total_spent: number;
+  purchase_count?: number;
   last_purchase?: string;
   created_at: string;
 }
@@ -208,6 +209,22 @@ const Customers: React.FC = () => {
     return new Date(dateString).toLocaleDateString('it-IT');
   };
 
+  // Trova il cliente con più acquisti
+  const getTopCustomerByPurchases = () => {
+    if (customers.length === 0) return null;
+    return customers.reduce((top, current) => 
+      (current.purchase_count || 0) > (top.purchase_count || 0) ? current : top
+    );
+  };
+
+  // Trova il cliente con la spesa più alta
+  const getTopCustomerBySpending = () => {
+    if (customers.length === 0) return null;
+    return customers.reduce((top, current) => 
+      current.total_spent > top.total_spent ? current : top
+    );
+  };
+
   if (loading && customers.length === 0) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
@@ -239,7 +256,7 @@ const Customers: React.FC = () => {
 
       {/* Statistiche rapide */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={4}>
+        <Grid item xs={12} sm={6} md={3}>
           <Card>
             <CardContent sx={{ textAlign: 'center' }}>
               <PersonIcon sx={{ fontSize: 40, color: 'primary.main', mb: 1 }} />
@@ -248,7 +265,7 @@ const Customers: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} sm={4}>
+        <Grid item xs={12} sm={6} md={3}>
           <Card>
             <CardContent sx={{ textAlign: 'center' }}>
               <StarIcon sx={{ fontSize: 40, color: 'warning.main', mb: 1 }} />
@@ -259,13 +276,43 @@ const Customers: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} sm={4}>
+        <Grid item xs={12} sm={6} md={3}>
           <Card>
             <CardContent sx={{ textAlign: 'center' }}>
-              <Typography variant="h6">Vendite Totali</Typography>
-              <Typography variant="h4" color="success.main">
-                {formatCurrency(customers.reduce((sum, c) => sum + (c.total_spent || 0), 0))}
-              </Typography>
+              <PersonIcon sx={{ fontSize: 40, color: 'success.main', mb: 1 }} />
+              <Typography variant="h6">Cliente Top Acquisti</Typography>
+              {getTopCustomerByPurchases() ? (
+                <>
+                  <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                    {getTopCustomerByPurchases()!.first_name} {getTopCustomerByPurchases()!.last_name}
+                  </Typography>
+                  <Typography variant="h6" color="success.main">
+                    {getTopCustomerByPurchases()!.purchase_count || 0} acquisti
+                  </Typography>
+                </>
+              ) : (
+                <Typography variant="body2">Nessun dato</Typography>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent sx={{ textAlign: 'center' }}>
+              <StarIcon sx={{ fontSize: 40, color: 'error.main', mb: 1 }} />
+              <Typography variant="h6">Cliente Top Spesa</Typography>
+              {getTopCustomerBySpending() ? (
+                <>
+                  <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                    {getTopCustomerBySpending()!.first_name} {getTopCustomerBySpending()!.last_name}
+                  </Typography>
+                  <Typography variant="h6" color="error.main">
+                    {formatCurrency(getTopCustomerBySpending()!.total_spent)}
+                  </Typography>
+                </>
+              ) : (
+                <Typography variant="body2">Nessun dato</Typography>
+              )}
             </CardContent>
           </Card>
         </Grid>
