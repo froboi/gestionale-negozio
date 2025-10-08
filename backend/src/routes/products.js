@@ -10,17 +10,31 @@ const router = express.Router();
 // Product validation rules
 const productValidation = [
   body('code').trim().isLength({ min: 1, max: 50 }).escape(),
-  body('description').optional().trim().escape(),
-  body('brand').optional().trim().isLength({ max: 100 }).escape(),
-  body('category').optional().trim().isLength({ max: 100 }).escape(),
-  body('size').optional().trim().isLength({ max: 20 }).escape(),
-  body('color').optional().trim().isLength({ max: 50 }).escape(),
+  body('description').optional({ checkFalsy: true }).trim().escape(),
+  body('brand').optional({ checkFalsy: true }).trim().isLength({ max: 100 }).escape(),
+  body('category').optional({ checkFalsy: true }).trim().isLength({ max: 100 }).escape(),
+  body('size').isIn(['XS/40', 'S/42', 'M/44', 'L/46', 'XL/48', 'XXL/50', 'No']),
+  body('color').optional({ checkFalsy: true }).trim().isLength({ max: 50 }).escape(),
   body('price').isFloat({ min: 0 }),
-  body('cost').optional().isFloat({ min: 0 }),
+  body('cost').optional().custom((value) => {
+    // Allow null, undefined, or empty string
+    if (value === null || value === undefined || value === '') return true;
+    // Allow valid numbers >= 0
+    const numValue = parseFloat(value);
+    if (!isNaN(numValue) && numValue >= 0) return true;
+    throw new Error('Cost must be a valid number >= 0');
+  }),
   body('quantity').isInt({ min: 0 }),
-  body('min_quantity').optional().isInt({ min: 0 }),
-  body('supplier').optional().trim().isLength({ max: 200 }).escape(),
-  body('season').optional().trim().isLength({ max: 20 }).escape()
+  body('min_quantity').optional().custom((value) => {
+    // Allow null, undefined, or empty string
+    if (value === null || value === undefined || value === '') return true;
+    // Allow valid integers >= 0
+    const intValue = parseInt(value);
+    if (Number.isInteger(intValue) && intValue >= 0) return true;
+    throw new Error('Min quantity must be a valid integer >= 0');
+  }),
+  body('supplier').optional({ checkFalsy: true }).trim().isLength({ max: 200 }).escape(),
+  body('season').optional({ checkFalsy: true }).trim().isLength({ max: 20 }).escape()
 ];
 
 // Get all products with filtering and pagination
@@ -148,8 +162,10 @@ router.get('/:id', param('id').isInt(), async (req, res) => {
 // Create new product
 router.post('/', requireRole(['admin', 'manager']), productValidation, async (req, res) => {
   try {
+    console.log('Received product data:', req.body);
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      console.log('Validation errors:', errors.array());
       return res.status(400).json({ errors: errors.array() });
     }
 
@@ -196,6 +212,98 @@ router.post('/', requireRole(['admin', 'manager']), productValidation, async (re
   } catch (error) {
     console.error('Create product error:', error);
     res.status(500).json({ error: 'Errore nella creazione del prodotto' });
+  }
+});
+
+// Create multiple products with sizes
+router.post('/multi-size', requireRole(['admin', 'manager']), async (req, res) => {
+  try {
+    const {
+      baseProduct,
+      sizeQuantities,
+      isSingleSize
+    } = req.body;
+
+    // Validate base product data
+    if (!baseProduct) {
+      return res.status(400).json({ error: 'Dati prodotto base richiesti' });
+    }
+
+    // Validate essential fields
+    if (typeof baseProduct.price !== 'number' || baseProduct.price < 0) {
+      return res.status(400).json({ error: 'Prezzo valido richiesto' });
+    }
+
+    // Validate size quantities
+    if (!sizeQuantities || Object.keys(sizeQuantities).length === 0) {
+      return res.status(400).json({ error: 'Almeno una taglia con quantità deve essere specificata' });
+    }
+
+    const validSizes = ['XS/40', 'S/42', 'M/44', 'L/46', 'XL/48', 'XXL/50', 'No'];
+    const createdProducts = [];
+
+    // Create products for each size
+    for (const [size, quantity] of Object.entries(sizeQuantities)) {
+      if (!validSizes.includes(size)) {
+        return res.status(400).json({ error: `Taglia non valida: ${size}` });
+      }
+
+      if (quantity <= 0) continue; // Skip sizes with 0 quantity
+
+      // Generate unique product code for this size
+      const sizeCode = `${baseProduct.code || 'PROD'}-${size.replace('/', '')}`;
+
+      // Check if product code already exists
+      const existingProduct = await executeQuery(
+        'SELECT id FROM products WHERE code = ?',
+        [sizeCode]
+      );
+
+      if (existingProduct.length > 0) {
+        return res.status(409).json({ error: `Codice prodotto già esistente: ${sizeCode}` });
+      }
+
+      // Generate barcode
+      const barcode = await BarcodeService.generateBarcode(sizeCode);
+
+      // Create product
+      const result = await executeQuery(`
+        INSERT INTO products (
+          code, description, brand, category, size, color,
+          price, cost, quantity, min_quantity, barcode, supplier, season
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        sizeCode,
+        baseProduct.description,
+        baseProduct.brand,
+        baseProduct.category,
+        size,
+        baseProduct.color,
+        baseProduct.price,
+        baseProduct.cost || null,
+        quantity,
+        baseProduct.min_quantity || 0,
+        barcode,
+        baseProduct.supplier || null,
+        baseProduct.season || null
+      ]);
+
+      const newProduct = await executeQuery(
+        'SELECT * FROM products WHERE id = ?',
+        [result.insertId]
+      );
+
+      createdProducts.push(newProduct[0]);
+    }
+
+    res.status(201).json({
+      message: `${createdProducts.length} prodotti creati con successo`,
+      products: createdProducts
+    });
+
+  } catch (error) {
+    console.error('Create multi-size products error:', error);
+    res.status(500).json({ error: 'Errore nella creazione dei prodotti' });
   }
 });
 

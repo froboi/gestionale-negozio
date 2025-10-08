@@ -15,10 +15,13 @@ Una **web application gestionale completa e sicura** per negozi di abbigliamento
 
 ### 📦 **Gestione Magazzino Avanzata**
 - Catalogazione prodotti con codice, taglia, colore, prezzo
-- **Generazione automatica barcode** univoci
+- **Sistema multi-taglia avanzato** con creazione automatica di varianti prodotto
+- **Taglie standardizzate** (XS/40, S/42, M/44, L/46, XL/48, XXL/50, No)
+- **Generazione automatica barcode** univoci per ogni variante
 - **Creazione PDF stampabili** con barcode e taglia
 - Controllo scorte minime con avvisi automatici
 - Ricerca avanzata e filtri multipli
+- **Modalità creazione rapida** per collezioni complete
 
 ### 👥 **Gestione Clienti e Fidelity**
 - Anagrafica completa clienti
@@ -150,6 +153,18 @@ docker exec gestionale-backend npm run migrate
 - Stampa massiva etichette
 - Layout ottimizzato per stampanti termiche
 - QR code opzionali per info prodotto
+
+### **👔 Sistema Multi-Taglia Avanzato**
+- **Taglie standardizzate**: XS/40, S/42, M/44, L/46, XL/48, XXL/50, No
+- **Creazione automatica varianti**: un prodotto per ogni taglia selezionata
+- **Range di taglie**: selezione rapida da taglia iniziale a finale
+- **Quantità individuali**: specifica quantità diversa per ogni taglia
+- **Codici automatici**: generazione barcode univoci per ogni variante
+- **Modalità singola**: per prodotti senza taglie multiple (accessori)
+- **Validazione rigida**: solo taglie supportate dal sistema
+- **Inventario separato**: ogni taglia è un'entità prodotto indipendente
+
+Per dettagli completi, consulta: [`MULTI-SIZE-GUIDE.md`](./MULTI-SIZE-GUIDE.md)
 
 ### **📈 Report e Analytics**
 - Statistiche vendite per periodo
