@@ -65,8 +65,6 @@ interface ProductFormData {
   price: string;
   cost: string;
   quantity: string;
-  min_quantity: string;
-  brand: string;
 }
 
 const availableSizes = ['XS/40', 'S/42', 'M/44', 'L/46', 'XL/48', 'XXL/50', 'No'];
@@ -89,9 +87,7 @@ const Products = (): JSX.Element => {
     season: '',
     price: '',
     cost: '',
-    quantity: '',
-    min_quantity: '',
-    brand: ''
+    quantity: ''
   });
 
   // Gestione taglie multiple
@@ -189,9 +185,7 @@ const Products = (): JSX.Element => {
         season: product.season || '',
         price: product.price?.toString() || '',
         cost: product.cost?.toString() || '',
-        quantity: product.quantity?.toString() || '',
-        min_quantity: product.min_quantity?.toString() || '',
-        brand: product.brand || ''
+        quantity: product.quantity?.toString() || ''
       });
       setIsSingleSize(true);
     } else {
@@ -206,9 +200,7 @@ const Products = (): JSX.Element => {
         season: '',
         price: '',
         cost: '',
-        quantity: '',
-        min_quantity: '',
-        brand: ''
+        quantity: ''
       });
       setIsSingleSize(true);
       setSizeRange({ start: 0, end: 0 });
@@ -258,8 +250,7 @@ const Products = (): JSX.Element => {
           ...formData,
           price: parseFloat(formData.price),
           cost: formData.cost ? parseFloat(formData.cost) : null,
-          quantity: parseInt(formData.quantity),
-          min_quantity: formData.min_quantity ? parseInt(formData.min_quantity) : null
+          quantity: parseInt(formData.quantity)
         };
 
         await axios({
@@ -276,12 +267,10 @@ const Products = (): JSX.Element => {
         const baseProduct = {
           code: formData.code,
           description: formData.description,
-          brand: formData.brand,
           category: formData.category,
           color: formData.color,
           price: parseFloat(formData.price),
           cost: formData.cost ? parseFloat(formData.cost) : null,
-          min_quantity: formData.min_quantity ? parseInt(formData.min_quantity) : null,
           supplier: formData.supplier,
           season: formData.season
         };
@@ -389,11 +378,6 @@ const Products = (): JSX.Element => {
                   <TableCell>{product.code}</TableCell>
                   <TableCell>
                     <Typography variant="subtitle2">{product.description || product.code}</Typography>
-                    {product.brand && (
-                      <Typography variant="caption" color="textSecondary">
-                        {product.brand}
-                      </Typography>
-                    )}
                   </TableCell>
                   <TableCell>
                     {product.category && (
@@ -406,7 +390,7 @@ const Products = (): JSX.Element => {
                   <TableCell>
                     <Chip
                       label={product.quantity}
-                      color={product.quantity <= (product.min_quantity || 0) ? 'error' : 'success'}
+                      color={product.quantity <= 5 ? 'warning' : 'success'}
                       size="small"
                     />
                   </TableCell>
@@ -635,25 +619,6 @@ const Products = (): JSX.Element => {
                   </Grid>
                 )}
               </Paper>
-            </Grid>
-
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Quantità Minima di Scorta"
-                type="number"
-                value={formData.min_quantity}
-                onChange={(e) => handleInputChange('min_quantity', e.target.value)}
-                helperText="Avviso quando la quantità scende sotto questo valore"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Brand"
-                value={formData.brand}
-                onChange={(e) => handleInputChange('brand', e.target.value)}
-              />
             </Grid>
           </Grid>
         </DialogContent>

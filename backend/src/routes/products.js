@@ -11,7 +11,6 @@ const router = express.Router();
 const productValidation = [
   body('code').trim().isLength({ min: 1, max: 50 }).escape(),
   body('description').optional({ checkFalsy: true }).trim().escape(),
-  body('brand').optional({ checkFalsy: true }).trim().isLength({ max: 100 }).escape(),
   body('category').optional({ checkFalsy: true }).trim().isLength({ max: 100 }).escape(),
   body('size').isIn(['XS/40', 'S/42', 'M/44', 'L/46', 'XL/48', 'XXL/50', 'No']),
   body('color').optional({ checkFalsy: true }).trim().isLength({ max: 50 }).escape(),
@@ -25,14 +24,6 @@ const productValidation = [
     throw new Error('Cost must be a valid number >= 0');
   }),
   body('quantity').isInt({ min: 0 }),
-  body('min_quantity').optional().custom((value) => {
-    // Allow null, undefined, or empty string
-    if (value === null || value === undefined || value === '') return true;
-    // Allow valid integers >= 0
-    const intValue = parseInt(value);
-    if (Number.isInteger(intValue) && intValue >= 0) return true;
-    throw new Error('Min quantity must be a valid integer >= 0');
-  }),
   body('supplier').optional({ checkFalsy: true }).trim().isLength({ max: 200 }).escape(),
   body('season').optional({ checkFalsy: true }).trim().isLength({ max: 20 }).escape()
 ];
@@ -75,10 +66,7 @@ router.get('/', async (req, res) => {
       queryParams.push(category);
     }
 
-    if (brand) {
-      whereConditions.push('brand = ?');
-      queryParams.push(brand);
-    }
+
 
     if (size) {
       whereConditions.push('size = ?');
@@ -91,7 +79,7 @@ router.get('/', async (req, res) => {
     }
 
     if (low_stock === 'true') {
-      whereConditions.push('quantity <= min_quantity');
+      whereConditions.push('quantity <= 5'); // Soglia fissa a 5
     }
 
     const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
@@ -101,8 +89,8 @@ router.get('/', async (req, res) => {
     const offsetValue = parseInt(offset);
     
     const products = await executeQuery(`
-      SELECT id, code, description, brand, category, size, color, 
-             price, cost, quantity, min_quantity, barcode, supplier, season,
+      SELECT id, code, description, category, size, color, 
+             price, cost, quantity, barcode, supplier, season,
              created_at, updated_at
       FROM products 
       ${whereClause}
@@ -170,8 +158,8 @@ router.post('/', requireRole(['admin', 'manager']), productValidation, async (re
     }
 
     const {
-      code, description, brand, category, size, color,
-      price, cost, quantity, min_quantity, supplier, season
+      code, description, category, size, color,
+      price, cost, quantity, supplier, season
     } = req.body;
 
     // Check if product code already exists
@@ -190,13 +178,12 @@ router.post('/', requireRole(['admin', 'manager']), productValidation, async (re
     // Create product
     const result = await executeQuery(`
       INSERT INTO products (
-        code, description, brand, category, size, color,
-        price, cost, quantity, min_quantity, barcode, supplier, season
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        code, description, category, size, color,
+        price, cost, quantity, barcode, supplier, season
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
-      code, description || null, brand || null, category || null, size || null, color || null,
-      price, cost || null, quantity, min_quantity || 0,
-      barcode, supplier || null, season || null
+      code, description || null, category || null, size || null, color || null,
+      price, cost || null, quantity, barcode, supplier || null, season || null
     ]);
 
     const newProduct = await executeQuery(
@@ -269,20 +256,18 @@ router.post('/multi-size', requireRole(['admin', 'manager']), async (req, res) =
       // Create product
       const result = await executeQuery(`
         INSERT INTO products (
-          code, description, brand, category, size, color,
-          price, cost, quantity, min_quantity, barcode, supplier, season
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          code, description, category, size, color,
+          price, cost, quantity, barcode, supplier, season
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         sizeCode,
-        baseProduct.description,
-        baseProduct.brand,
-        baseProduct.category,
+        baseProduct.description || null,
+        baseProduct.category || null,
         size,
-        baseProduct.color,
+        baseProduct.color || null,
         baseProduct.price,
         baseProduct.cost || null,
         quantity,
-        baseProduct.min_quantity || 0,
         barcode,
         baseProduct.supplier || null,
         baseProduct.season || null
@@ -317,8 +302,8 @@ router.put('/:id', requireRole(['admin', 'manager']), productValidation, async (
 
     const productId = req.params.id;
     const {
-      code, description, brand, category, size, color,
-      price, cost, quantity, min_quantity, supplier, season
+      code, description, category, size, color,
+      price, cost, quantity, supplier, season
     } = req.body;
 
     // Check if product exists
@@ -352,15 +337,14 @@ router.put('/:id', requireRole(['admin', 'manager']), productValidation, async (
     // Update product
     await executeQuery(`
       UPDATE products SET 
-        code = ?, description = ?, brand = ?, category = ?,
+        code = ?, description = ?, category = ?,
         size = ?, color = ?, price = ?, cost = ?, quantity = ?,
-        min_quantity = ?, barcode = ?, supplier = ?, season = ?,
+        barcode = ?, supplier = ?, season = ?,
         updated_at = NOW()
       WHERE id = ?
     `, [
-      code, description || null, brand || null, category || null, size || null, color || null,
-      price, cost || null, quantity, min_quantity || 0,
-      barcode, supplier || null, season || null, productId
+      code, description || null, category || null, size || null, color || null,
+      price, cost || null, quantity, barcode, supplier || null, season || null, productId
     ]);
 
     const updatedProduct = await executeQuery(
