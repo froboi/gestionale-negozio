@@ -20,7 +20,7 @@ const registerValidation = [
   body('username').trim().isLength({ min: 3, max: 50 }).isAlphanumeric().escape(),
   body('email').isEmail().normalizeEmail(),
   body('password').isLength({ min: 8 }).matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/),
-  body('role').optional().isIn(['admin', 'manager', 'employee', 'tech'])
+  body('role').optional().isIn(['admin', 'manager', 'employee'])
 ];
 
 // User login
@@ -81,7 +81,7 @@ router.post('/login', loginValidation, async (req, res) => {
     }
 
     // Check 2FA if enabled
-    if (user.two_fa_enabled && user.role === 'tech') {
+    if (user.two_fa_enabled) {
       if (!twoFAToken) {
         return res.status(402).json({ 
           error: '2FA richiesto',
@@ -189,8 +189,8 @@ router.post('/register', authenticateToken, registerValidation, async (req, res)
 // Setup 2FA
 router.post('/setup-2fa', authenticateToken, async (req, res) => {
   try {
-    if (req.user.role !== 'tech') {
-      return res.status(403).json({ error: '2FA disponibile solo per utenti tecnici' });
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: '2FA disponibile solo per amministratori' });
     }
 
     // Generate secret

@@ -76,10 +76,11 @@ const Admin: React.FC = () => {
     username: '',
     email: '',
     password: '',
-    role: 'user'
+    role: 'employee'
   });
 
-  const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
+  // Forza l'uso di /api in produzione - viene gestito dal proxy nginx
+  const API_BASE_URL = '/api';
 
   useEffect(() => {
     if (activeTab === 0) {
@@ -568,7 +569,7 @@ const Admin: React.FC = () => {
                   onChange={(e) => handleUserFormChange('role', e.target.value)}
                   label="Ruolo"
                 >
-                  <MenuItem value="user">Utente</MenuItem>
+                  <MenuItem value="employee">Dipendente</MenuItem>
                   <MenuItem value="manager">Manager</MenuItem>
                   <MenuItem value="admin">Amministratore</MenuItem>
                 </Select>

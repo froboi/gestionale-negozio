@@ -17,7 +17,7 @@ async function createTables() {
         email VARCHAR(100) UNIQUE NOT NULL,
         password_hash VARCHAR(255) NOT NULL,
         salt VARCHAR(255) NOT NULL,
-        role ENUM('admin', 'manager', 'employee', 'tech') NOT NULL DEFAULT 'employee',
+        role ENUM('admin', 'manager', 'employee') NOT NULL DEFAULT 'employee',
         two_fa_secret VARCHAR(32),
         two_fa_enabled BOOLEAN DEFAULT FALSE,
         failed_login_attempts INT DEFAULT 0,

@@ -60,7 +60,7 @@ router.get('/dashboard', requireRole(['admin', 'manager']), async (req, res) => 
     // Top selling products
     const topProducts = await executeQuery(`
       SELECT 
-        p.id, p.code, p.name, p.brand,
+        p.id, p.code, p.description as name, p.brand,
         SUM(si.quantity) as total_sold,
         SUM(si.subtotal) as total_revenue
       FROM products p
@@ -223,12 +223,12 @@ router.get('/reports/inventory', requireRole(['admin', 'manager']), async (req, 
 
     // Get inventory data
     const products = await executeQuery(`
-      SELECT id, code, name, brand, category, size, color,
+      SELECT id, code, description as name, brand, category, size, color,
              quantity, min_quantity, price, cost,
              (quantity * price) as value
       FROM products
       ${whereClause}
-      ORDER BY name
+      ORDER BY description
     `, queryParams);
 
     // Calculate summary
@@ -290,13 +290,195 @@ router.get('/users', requireRole(['admin']), async (req, res) => {
   }
 });
 
+// Create new user
+router.post('/users', requireRole(['admin']), [
+  body('username').trim().isLength({ min: 3, max: 50 }).escape(),
+  body('email').optional({ checkFalsy: true }).isEmail().normalizeEmail(),
+  body('password').isLength({ min: 6 }),
+  body('role').isIn(['admin', 'manager', 'employee'])
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { username, email, password, role } = req.body;
+    const bcrypt = require('bcrypt');
+
+    // Check if username already exists
+    const existingUser = await executeQuery(
+      'SELECT id FROM users WHERE username = ?',
+      [username]
+    );
+
+    if (existingUser.length > 0) {
+      return res.status(409).json({ error: 'Username già esistente' });
+    }
+
+    // Check if email already exists (if provided)
+    if (email) {
+      const existingEmail = await executeQuery(
+        'SELECT id FROM users WHERE email = ?',
+        [email]
+      );
+
+      if (existingEmail.length > 0) {
+        return res.status(409).json({ error: 'Email già esistente' });
+      }
+    }
+
+    // Hash password
+    const crypto = require('crypto');
+    const salt = crypto.randomBytes(32).toString('hex');
+    const hashedPassword = await bcrypt.hash(password + salt, 12);
+
+    // Create user
+    await executeQuery(`
+      INSERT INTO users (username, email, password_hash, salt, role)
+      VALUES (?, ?, ?, ?, ?)
+    `, [username, email || null, hashedPassword, salt, role]);
+
+    res.status(201).json({ message: 'Utente creato con successo' });
+
+  } catch (error) {
+    console.error('Create user error:', error);
+    res.status(500).json({ error: 'Errore nella creazione dell\'utente' });
+  }
+});
+
+// Update user
+router.put('/users/:id', requireRole(['admin']), [
+  body('username').optional().trim().isLength({ min: 3, max: 50 }).escape(),
+  body('email').optional({ checkFalsy: true }).isEmail().normalizeEmail(),
+  body('password').optional().isLength({ min: 6 }),
+  body('role').optional().isIn(['admin', 'manager', 'employee'])
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const userId = req.params.id;
+    const { username, email, password, role } = req.body;
+    const bcrypt = require('bcrypt');
+
+    // Check if user exists
+    const user = await executeQuery('SELECT id FROM users WHERE id = ?', [userId]);
+    if (!user.length) {
+      return res.status(404).json({ error: 'Utente non trovato' });
+    }
+
+    // Check for duplicate username (if changing)
+    if (username) {
+      const existingUser = await executeQuery(
+        'SELECT id FROM users WHERE username = ? AND id != ?',
+        [username, userId]
+      );
+
+      if (existingUser.length > 0) {
+        return res.status(409).json({ error: 'Username già esistente' });
+      }
+    }
+
+    // Check for duplicate email (if changing)
+    if (email) {
+      const existingEmail = await executeQuery(
+        'SELECT id FROM users WHERE email = ? AND id != ?',
+        [email, userId]
+      );
+
+      if (existingEmail.length > 0) {
+        return res.status(409).json({ error: 'Email già esistente' });
+      }
+    }
+
+    // Build update query
+    const updateFields = [];
+    const updateValues = [];
+
+    if (username) {
+      updateFields.push('username = ?');
+      updateValues.push(username);
+    }
+
+    if (email !== undefined) {
+      updateFields.push('email = ?');
+      updateValues.push(email || null);
+    }
+
+    if (password) {
+      const crypto = require('crypto');
+      const salt = crypto.randomBytes(32).toString('hex');
+      const hashedPassword = await bcrypt.hash(password + salt, 12);
+      updateFields.push('password_hash = ?');
+      updateFields.push('salt = ?');
+      updateValues.push(hashedPassword);
+      updateValues.push(salt);
+    }
+
+    if (role) {
+      updateFields.push('role = ?');
+      updateValues.push(role);
+    }
+
+    if (updateFields.length === 0) {
+      return res.status(400).json({ error: 'Nessun campo da aggiornare' });
+    }
+
+    updateFields.push('updated_at = NOW()');
+    updateValues.push(userId);
+
+    await executeQuery(`
+      UPDATE users SET ${updateFields.join(', ')}
+      WHERE id = ?
+    `, updateValues);
+
+    res.json({ message: 'Utente aggiornato con successo' });
+
+  } catch (error) {
+    console.error('Update user error:', error);
+    res.status(500).json({ error: 'Errore nell\'aggiornamento dell\'utente' });
+  }
+});
+
+// Delete user
+router.delete('/users/:id', requireRole(['admin']), async (req, res) => {
+  try {
+    const userId = req.params.id;
+
+    // Check if user exists
+    const user = await executeQuery('SELECT id FROM users WHERE id = ?', [userId]);
+    if (!user.length) {
+      return res.status(404).json({ error: 'Utente non trovato' });
+    }
+
+    // Prevent deletion of the last admin
+    const adminCount = await executeQuery('SELECT COUNT(*) as count FROM users WHERE role = "admin"');
+    const currentUser = await executeQuery('SELECT role FROM users WHERE id = ?', [userId]);
+    
+    if (currentUser[0].role === 'admin' && adminCount[0].count <= 1) {
+      return res.status(400).json({ error: 'Non è possibile eliminare l\'ultimo amministratore' });
+    }
+
+    await executeQuery('DELETE FROM users WHERE id = ?', [userId]);
+
+    res.json({ message: 'Utente eliminato con successo' });
+
+  } catch (error) {
+    console.error('Delete user error:', error);
+    res.status(500).json({ error: 'Errore nell\'eliminazione dell\'utente' });
+  }
+});
+
 // Update user role
 router.put('/users/:id/role', requireRole(['admin']), async (req, res) => {
   try {
     const userId = req.params.id;
     const { role } = req.body;
 
-    const validRoles = ['admin', 'manager', 'employee', 'tech'];
+    const validRoles = ['admin', 'manager', 'employee'];
     if (!validRoles.includes(role)) {
       return res.status(400).json({ error: 'Ruolo non valido' });
     }
@@ -351,7 +533,7 @@ router.put('/users/:id/lock', requireRole(['admin']), async (req, res) => {
 });
 
 // Get audit logs
-router.get('/audit-logs', requireRole(['admin', 'tech']), async (req, res) => {
+router.get('/audit-logs', requireRole(['admin']), async (req, res) => {
   try {
     const { page = 1, limit = 50, user_id, action, start_date, end_date } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
@@ -413,7 +595,7 @@ router.get('/audit-logs', requireRole(['admin', 'tech']), async (req, res) => {
 });
 
 // Get system health
-router.get('/system/health', requireRole(['admin', 'tech']), async (req, res) => {
+router.get('/system/health', requireRole(['admin']), async (req, res) => {
   try {
     // Database health
     const dbTest = await executeQuery('SELECT 1 as test');

@@ -92,12 +92,12 @@ docker exec gestionale-backend npm run migrate
 
 - **Database errors**: Verifica credenziali in `.env`
 - **WhatsApp issues**: Controlla token e webhook
-- **2FA problems**: Reset via database per utenti tech
+- **2FA problems**: Reset via database per utenti admin
 - **Performance**: Verifica indici database e cache
 
 ## 🎯 **Features Pronte all'Uso:**
 
-1. **Login sicuro** con ruoli (admin/manager/employee/tech)
+1. **Login sicuro** con ruoli (admin/manager/employee)
 2. **Gestione prodotti** con ricerca e filtri
 3. **Barcode generation** e stampa etichette PDF
 4. **Clienti e fidelity** con storico acquisti

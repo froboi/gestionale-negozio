@@ -131,7 +131,6 @@ docker exec gestionale-backend npm run migrate
 - **Admin**: Accesso completo al sistema
 - **Manager**: Gestione prodotti, clienti, vendite
 - **Employee**: Vendite e consultazione dati
-- **Tech**: Accesso tecnico con 2FA obbligatorio
 
 ### **Primo Accesso:**
 1. Creare utente admin tramite console database
@@ -214,7 +213,7 @@ Per dettagli completi, consulta: [`MULTI-SIZE-GUIDE.md`](./MULTI-SIZE-GUIDE.md)
 ### **Troubleshooting Comuni:**
 1. **Errore database**: Verificare credenziali in `.env`
 2. **WhatsApp non funziona**: Controllare token e webhook
-3. **2FA issues**: Reset via database per utenti tech
+3. **2FA issues**: Reset via database per utenti admin
 4. **Performance lente**: Verificare indici database
 
 ## 📄 **Licenza e Contributi**

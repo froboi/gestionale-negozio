@@ -71,7 +71,7 @@ function require2FA(req, res, next) {
   }
 
   // Skip 2FA for certain roles or if disabled
-  if (req.user.role !== 'tech' || !req.user.two_fa_enabled) {
+  if (!req.user.two_fa_enabled) {
     return next();
   }
 
