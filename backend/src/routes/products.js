@@ -4,8 +4,12 @@ const { executeQuery, executeTransaction } = require('../database/connection');
 const { requireRole } = require('../middleware/auth');
 const BarcodeService = require('../services/barcodeService');
 const PDFService = require('../services/pdfService');
+const multer = require('multer');
+const csv = require('csv-parser');
+const fs = require('fs');
 
 const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage() });
 
 // Product validation rules
 const productValidation = [
@@ -27,6 +31,118 @@ const productValidation = [
   body('supplier').optional({ checkFalsy: true }).trim().isLength({ max: 200 }).escape(),
   body('season').optional({ checkFalsy: true }).trim().isLength({ max: 20 }).escape()
 ];
+
+// Import products from CSV
+router.post('/import-csv', requireRole(['admin', 'manager']), upload.single('file'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'Nessun file caricato' });
+  }
+
+  const results = [];
+  const errors = [];
+  let successCount = 0;
+
+  try {
+    const stream = require('stream');
+    const bufferStream = new stream.PassThrough();
+    bufferStream.end(req.file.buffer);
+
+    bufferStream
+      .pipe(csv())
+      .on('data', (data) => results.push(data))
+      .on('end', async () => {
+        for (const row of results) {
+          try {
+            // Map CSV fields to database fields
+            // Expected CSV headers: codice, descrizione, categoria, taglia, colore, prezzo, costo, quantita, fornitore, stagione
+            const productData = {
+              code: row.codice?.trim(),
+              description: row.descrizione?.trim(),
+              category: row.categoria?.trim(),
+              size: row.taglia?.trim(),
+              color: row.colore?.trim(),
+              price: parseFloat(row.prezzo),
+              cost: row.costo ? parseFloat(row.costo) : null,
+              quantity: parseInt(row.quantita || row.qunatita || row.quantità),
+              supplier: row.fornitore?.trim(),
+              season: row.stagione?.trim()
+            };
+
+            // Basic validation
+            if (!productData.code || !productData.price || isNaN(productData.price) || isNaN(productData.quantity)) {
+              errors.push(`Riga ignorata (dati mancanti o invalidi): ${JSON.stringify(row)}`);
+              continue;
+            }
+
+            // Check if product exists
+            const existingProduct = await executeQuery(
+              'SELECT id FROM products WHERE code = ?',
+              [productData.code]
+            );
+
+            if (existingProduct.length > 0) {
+              // Update existing product
+              await executeQuery(`
+                UPDATE products SET 
+                  description = ?, category = ?, size = ?, color = ?,
+                  price = ?, cost = ?, quantity = ?, supplier = ?, season = ?,
+                  updated_at = NOW()
+                WHERE id = ?
+              `, [
+                productData.description || null,
+                productData.category || null,
+                productData.size || null,
+                productData.color || null,
+                productData.price,
+                productData.cost,
+                productData.quantity,
+                productData.supplier || null,
+                productData.season || null,
+                existingProduct[0].id
+              ]);
+            } else {
+              // Create new product
+              const barcode = await BarcodeService.generateBarcode(productData.code);
+              
+              await executeQuery(`
+                INSERT INTO products (
+                  code, description, category, size, color,
+                  price, cost, quantity, barcode, supplier, season
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              `, [
+                productData.code,
+                productData.description || null,
+                productData.category || null,
+                productData.size || null,
+                productData.color || null,
+                productData.price,
+                productData.cost,
+                productData.quantity,
+                barcode,
+                productData.supplier || null,
+                productData.season || null
+              ]);
+            }
+            successCount++;
+          } catch (err) {
+            errors.push(`Errore elaborazione riga ${row.code}: ${err.message}`);
+          }
+        }
+
+        res.json({
+          message: 'Importazione completata',
+          summary: {
+            total: results.length,
+            success: successCount,
+            errors: errors
+          }
+        });
+      });
+  } catch (error) {
+    console.error('CSV import error:', error);
+    res.status(500).json({ error: 'Errore durante l\'importazione del CSV' });
+  }
+});
 
 // Get all products with filtering and pagination
 router.get('/', async (req, res) => {

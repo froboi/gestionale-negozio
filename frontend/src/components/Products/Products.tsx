@@ -30,7 +30,8 @@ import {
 import {
   Add as AddIcon,
   Edit as EditIcon,
-  Delete as DeleteIcon
+  Delete as DeleteIcon,
+  UploadFile as UploadFileIcon
 } from '@mui/icons-material';
 import axios from 'axios';
 
@@ -94,10 +95,48 @@ const Products = (): JSX.Element => {
   const [isSingleSize, setIsSingleSize] = useState(true);
   const [sizeRange, setSizeRange] = useState({ start: 0, end: 0 });
   const [sizeQuantities, setSizeQuantities] = useState<{[key: string]: string}>({});
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetchProducts();
   }, []);
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      const headers = token ? { 
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'multipart/form-data'
+      } : { 'Content-Type': 'multipart/form-data' };
+
+      const response = await axios.post(`${API_BASE_URL}/products/import-csv`, formData, { headers });
+      
+      const summary = response.data.summary;
+      let message = `Importazione completata: ${summary.success} prodotti importati/aggiornati.`;
+      if (summary.errors.length > 0) {
+        message += ` ${summary.errors.length} errori (vedi console).`;
+        console.warn('Errori importazione CSV:', summary.errors);
+      }
+      
+      alert(message);
+      fetchProducts();
+    } catch (error: any) {
+      console.error('Errore upload CSV:', error);
+      setError('Errore durante l\'importazione del file CSV');
+    } finally {
+      setLoading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
 
   const fetchProducts = async () => {
     try {
@@ -333,14 +372,31 @@ const Products = (): JSX.Element => {
         <Typography variant="h4" gutterBottom>
           Gestione Prodotti
         </Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => handleOpenDialog()}
-          color="primary"
-        >
-          Aggiungi Prodotto
-        </Button>
+        <Box>
+          <input
+            type="file"
+            accept=".csv"
+            style={{ display: 'none' }}
+            ref={fileInputRef}
+            onChange={handleFileUpload}
+          />
+          <Button
+            variant="outlined"
+            startIcon={<UploadFileIcon />}
+            onClick={() => fileInputRef.current?.click()}
+            sx={{ mr: 2 }}
+          >
+            Importa CSV
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => handleOpenDialog()}
+            color="primary"
+          >
+            Aggiungi Prodotto
+          </Button>
+        </Box>
       </Box>
 
       {error && (
@@ -356,6 +412,7 @@ const Products = (): JSX.Element => {
               <TableCell>Codice</TableCell>
               <TableCell>Descrizione</TableCell>
               <TableCell>Categoria</TableCell>
+              <TableCell>Fornitore</TableCell>
               <TableCell>Taglia</TableCell>
               <TableCell>Colore</TableCell>
               <TableCell>Prezzo</TableCell>
@@ -384,6 +441,7 @@ const Products = (): JSX.Element => {
                       <Chip label={product.category} size="small" variant="outlined" />
                     )}
                   </TableCell>
+                  <TableCell>{product.supplier || '-'}</TableCell>
                   <TableCell>{product.size || '-'}</TableCell>
                   <TableCell>{product.color || '-'}</TableCell>
                   <TableCell>€{parseFloat(String(product.price || '0')).toFixed(2)}</TableCell>
