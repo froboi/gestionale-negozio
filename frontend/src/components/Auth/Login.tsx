@@ -15,17 +15,15 @@ const Login: React.FC = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [tfaCode, setTfaCode] = useState('');
-  const [showTfa, setShowTfa] = useState(false);
-  const { login, loading, error } = useAuth();
+  const { login, loading, error, requires2FA } = useAuth();
+
+  console.log('Login render. requires2FA:', requires2FA, 'loading:', loading, 'error:', error);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('Submitting login...');
     
-    const success = await login(username, password, tfaCode);
-    
-    if (!success && error?.includes('2FA')) {
-      setShowTfa(true);
-    }
+    await login(username, password, tfaCode);
   };
 
   return (
@@ -44,8 +42,14 @@ const Login: React.FC = () => {
           </Typography>
           
           <Typography component="h2" variant="h6" align="center" color="textSecondary" gutterBottom>
-            Accesso
+            Accesso (v2.1)
           </Typography>
+
+          {requires2FA && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Codice di verifica inviato. Controlla la tua email (o i log del server).
+            </Alert>
+          )}
 
           {error && (
             <Alert severity="error" sx={{ mb: 2 }}>
@@ -82,7 +86,7 @@ const Login: React.FC = () => {
               disabled={loading}
             />
 
-            {showTfa && (
+            {requires2FA && (
               <TextField
                 margin="normal"
                 required

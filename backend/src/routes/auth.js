@@ -1,11 +1,11 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const speakeasy = require('speakeasy');
-const QRCode = require('qrcode');
+const crypto = require('crypto');
 const { body, validationResult } = require('express-validator');
 const { executeQuery } = require('../database/connection');
 const { authenticateToken } = require('../middleware/auth');
+const EmailService = require('../services/emailService');
 
 const router = express.Router();
 
@@ -32,13 +32,12 @@ router.post('/login', loginValidation, async (req, res) => {
     }
 
     const { username, password, twoFAToken } = req.body;
-    const clientIP = req.ip || req.connection.remoteAddress;
 
     // Get user with security checks
     const users = await executeQuery(`
       SELECT id, username, email, password_hash, salt, role, 
-             two_fa_secret, two_fa_enabled, failed_login_attempts, 
-             last_failed_login, account_locked
+             two_fa_enabled, otp_code, otp_expires_at, last_2fa_verification,
+             failed_login_attempts, last_failed_login, account_locked
       FROM users 
       WHERE username = ? OR email = ?
     `, [username, username]);
@@ -67,7 +66,18 @@ router.post('/login', loginValidation, async (req, res) => {
     }
 
     // Verify password
-    const validPassword = await bcrypt.compare(password, user.password_hash);
+    let validPassword = false;
+    
+    // Try with salt appended (standard method for this app)
+    if (user.salt) {
+      validPassword = await bcrypt.compare(password + user.salt, user.password_hash);
+    }
+    
+    // Fallback: try direct comparison (for legacy or differently hashed passwords)
+    if (!validPassword) {
+      validPassword = await bcrypt.compare(password, user.password_hash);
+    }
+
     if (!validPassword) {
       // Increment failed attempts
       await executeQuery(`
@@ -82,22 +92,65 @@ router.post('/login', loginValidation, async (req, res) => {
 
     // Check 2FA if enabled
     if (user.two_fa_enabled) {
-      if (!twoFAToken) {
-        return res.status(402).json({ 
-          error: '2FA richiesto',
-          requires2FA: true 
-        });
+      // Check if 2FA verification is needed (reset every Monday)
+      let needsVerification = true;
+      
+      if (user.last_2fa_verification) {
+        const lastVerification = new Date(user.last_2fa_verification);
+        const now = new Date();
+        
+        // Calculate the start of the current week (Monday)
+        const currentMonday = new Date(now);
+        const day = currentMonday.getDay();
+        const diff = currentMonday.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
+        currentMonday.setDate(diff);
+        currentMonday.setHours(0, 0, 0, 0);
+        
+        // If last verification was after the start of this week's Monday, no need to verify again
+        if (lastVerification >= currentMonday) {
+          needsVerification = false;
+        }
       }
 
-      const verified = speakeasy.totp.verify({
-        secret: user.two_fa_secret,
-        encoding: 'base32',
-        token: twoFAToken,
-        window: 2
-      });
+      if (needsVerification) {
+        // If no token provided, generate and send OTP
+        if (!twoFAToken) {
+          // Generate 6-digit OTP
+          const otp = crypto.randomInt(100000, 999999).toString();
+          const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-      if (!verified) {
-        return res.status(401).json({ error: 'Codice 2FA non valido' });
+          // Save OTP to DB
+          await executeQuery(`
+            UPDATE users 
+            SET otp_code = ?, otp_expires_at = ?
+            WHERE id = ?
+          `, [otp, expiresAt, user.id]);
+
+          // Send OTP via email
+          await EmailService.sendOTP(user.email, otp);
+
+          return res.status(402).json({ 
+            error: '2FA richiesto',
+            requires2FA: true,
+            message: `Codice inviato a ${user.email}`
+          });
+        }
+
+        // Verify provided token
+        if (user.otp_code !== twoFAToken) {
+          return res.status(401).json({ error: 'Codice 2FA non valido' });
+        }
+
+        if (new Date() > new Date(user.otp_expires_at)) {
+          return res.status(401).json({ error: 'Codice 2FA scaduto' });
+        }
+
+        // Clear OTP and update last verification time after successful use
+        await executeQuery(`
+          UPDATE users 
+          SET otp_code = NULL, otp_expires_at = NULL, last_2fa_verification = NOW()
+          WHERE id = ?
+        `, [user.id]);
       }
     }
 
@@ -165,9 +218,8 @@ router.post('/register', authenticateToken, registerValidation, async (req, res)
     }
 
     // Hash password with salt
-    const saltRounds = 12;
-    const salt = await bcrypt.genSalt(saltRounds);
-    const passwordHash = await bcrypt.hash(password, salt);
+    const salt = crypto.randomBytes(32).toString('hex');
+    const passwordHash = await bcrypt.hash(password + salt, 12);
 
     // Create user
     const result = await executeQuery(`
@@ -186,73 +238,38 @@ router.post('/register', authenticateToken, registerValidation, async (req, res)
   }
 });
 
-// Setup 2FA
-router.post('/setup-2fa', authenticateToken, async (req, res) => {
+// Enable 2FA
+router.post('/enable-2fa', authenticateToken, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: '2FA disponibile solo per amministratori' });
-    }
+    // Enable 2FA for user
+    await executeQuery(`
+      UPDATE users 
+      SET two_fa_enabled = TRUE
+      WHERE id = ?
+    `, [req.user.id]);
 
-    // Generate secret
-    const secret = speakeasy.generateSecret({
-      name: `Gestionale Abbigliamento (${req.user.username})`,
-      issuer: 'Gestionale Abbigliamento'
-    });
-
-    // Generate QR code
-    const qrCodeUrl = await QRCode.toDataURL(secret.otpauth_url);
-
-    // Store secret temporarily (will be confirmed when user verifies)
-    req.session.temp2FASecret = secret.base32;
-
-    res.json({
-      secret: secret.base32,
-      qrCode: qrCodeUrl,
-      manualEntryKey: secret.base32
-    });
+    res.json({ message: '2FA abilitato con successo. Al prossimo login riceverai un codice via email.' });
 
   } catch (error) {
-    console.error('2FA setup error:', error);
+    console.error('2FA enable error:', error);
     res.status(500).json({ error: 'Errore interno del server' });
   }
 });
 
-// Verify and enable 2FA
-router.post('/verify-2fa', authenticateToken, async (req, res) => {
+// Disable 2FA
+router.post('/disable-2fa', authenticateToken, async (req, res) => {
   try {
-    const { token } = req.body;
-    const tempSecret = req.session.temp2FASecret;
-
-    if (!tempSecret) {
-      return res.status(400).json({ error: 'Setup 2FA non inizializzato' });
-    }
-
-    // Verify token
-    const verified = speakeasy.totp.verify({
-      secret: tempSecret,
-      encoding: 'base32',
-      token: token,
-      window: 2
-    });
-
-    if (!verified) {
-      return res.status(401).json({ error: 'Codice 2FA non valido' });
-    }
-
-    // Enable 2FA for user
+    // Disable 2FA for user
     await executeQuery(`
       UPDATE users 
-      SET two_fa_secret = ?, two_fa_enabled = TRUE
+      SET two_fa_enabled = FALSE, otp_code = NULL, otp_expires_at = NULL
       WHERE id = ?
-    `, [tempSecret, req.user.id]);
+    `, [req.user.id]);
 
-    // Clear temporary secret
-    delete req.session.temp2FASecret;
-
-    res.json({ message: '2FA abilitato con successo' });
+    res.json({ message: '2FA disabilitato con successo' });
 
   } catch (error) {
-    console.error('2FA verification error:', error);
+    console.error('2FA disable error:', error);
     res.status(500).json({ error: 'Errore interno del server' });
   }
 });

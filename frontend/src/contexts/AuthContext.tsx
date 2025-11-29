@@ -9,12 +9,20 @@ interface User {
   two_fa_enabled: boolean;
 }
 
+interface LoginResult {
+  success: boolean;
+  requires2FA?: boolean;
+  error?: string;
+}
+
 interface AuthContextType {
   user: User | null;
-  login: (username: string, password: string, tfaCode?: string) => Promise<boolean>;
+  login: (username: string, password: string, tfaCode?: string) => Promise<LoginResult>;
   logout: () => void;
   loading: boolean;
   error: string | null;
+  initialized: boolean;
+  requires2FA: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -33,8 +41,10 @@ interface AuthProviderProps {
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [initialized, setInitialized] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [requires2FA, setRequires2FA] = useState(false);
 
   // Configure axios defaults
   useEffect(() => {
@@ -61,13 +71,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           delete axios.defaults.headers.common['Authorization'];
         }
       }
-      setLoading(false);
+      setInitialized(true);
     };
 
     checkAuth();
   }, []);
 
-  const login = async (username: string, password: string, tfaCode?: string): Promise<boolean> => {
+  const login = async (username: string, password: string, tfaCode?: string): Promise<LoginResult> => {
     try {
       setError(null);
       setLoading(true);
@@ -75,7 +85,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const response = await axios.post('/api/auth/login', {
         username,
         password,
-        tfaCode
+        twoFAToken: tfaCode
       });
 
       console.log('Login response:', response.data); // Debug log
@@ -90,11 +100,34 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       setUser(userData);
       
-      return true;
+      return { success: true };
     } catch (error: any) {
-      console.error('Login error:', error); // Debug log
-      setError(error.response?.data?.error || error.message || 'Errore di accesso');
-      return false;
+      console.error('Login error object:', error);
+      console.error('Response status:', error.response?.status);
+      
+      const errorMessage = error.response?.data?.error || error.message || 'Errore di accesso';
+      const is402 = error.response?.status === 402;
+      const has2FAFlag = error.response?.data?.requires2FA === true;
+      const is2FAMessage = typeof errorMessage === 'string' && errorMessage.includes('2FA');
+      
+      const requires2FA = is402 || has2FAFlag || is2FAMessage;
+      
+      console.log('2FA Detection:', { is402, has2FAFlag, is2FAMessage, requires2FA });
+
+      if (!requires2FA) {
+        setError(errorMessage);
+        setRequires2FA(false);
+      } else {
+        // If 2FA is required, we don't want to show a generic error
+        setError(null);
+        setRequires2FA(true);
+      }
+
+      return { 
+        success: false, 
+        error: errorMessage,
+        requires2FA
+      };
     } finally {
       setLoading(false);
     }
@@ -111,7 +144,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     login,
     logout,
     loading,
-    error
+    error,
+    initialized,
+    requires2FA
   };
 
   return (

@@ -70,9 +70,9 @@ const theme = createTheme({
 });
 
 function AppContent() {
-  const { user, loading } = useAuth();
+  const { user, initialized } = useAuth();
 
-  if (loading) {
+  if (!initialized) {
     return <div>Caricamento...</div>;
   }
 
