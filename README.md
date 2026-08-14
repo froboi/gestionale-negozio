@@ -89,11 +89,11 @@ cd gestionale-negozio/gestionale
 ### **2. Configurazione Environment**
 ```bash
 # Backend
-cp backend/.env.example backend/.env
+cd backend/.env.example backend/.env
 # Modifica le variabili in backend/.env
 
 # Docker
-cp docker/.env.example docker/.env
+cd docker/.env.example docker/.env
 # Modifica le variabili in docker/.env
 ```
 
