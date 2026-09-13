@@ -213,8 +213,36 @@ Per dettagli completi, consulta: [`MULTI-SIZE-GUIDE.md`](./MULTI-SIZE-GUIDE.md)
 ### **Troubleshooting Comuni:**
 1. **Errore database**: Verificare credenziali in `.env`
 2. **WhatsApp non funziona**: Controllare token e webhook
-3. **2FA issues**: Reset via database per utenti admin
+3. **2FA issues**: In locale impostare `OTP_DELIVERY_MODE=log`; il codice OTP viene stampato nei log del backend. In produzione usare `OTP_DELIVERY_MODE=smtp` e una App Password/provider SMTP valido. Gmail non accetta la password normale dell'account.
 4. **Performance lente**: Verificare indici database
+
+### Configurazione OTP 2FA
+
+In sviluppo locale:
+
+```env
+NODE_ENV=development
+OTP_DELIVERY_MODE=log
+```
+
+Il codice viene salvato nel database e scritto nei log del backend per 10 minuti. Non usare questa modalità in produzione.
+
+In produzione:
+
+```env
+NODE_ENV=production
+OTP_DELIVERY_MODE=smtp
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your_email@gmail.com
+SMTP_PASS=your_google_app_password
+SMTP_FROM="Gestionale Negozio <your_email@gmail.com>"
+```
+
+Per Gmail è necessaria una App Password dopo aver attivato la verifica in due passaggi. Se la consegna SMTP fallisce, il login restituisce un errore temporaneo e non lascia un OTP utilizzabile nel database.
+
+Con Docker, senza un file `docker/.env`, il compose usa automaticamente `NODE_ENV=development` e `OTP_DELIVERY_MODE=log`. Per la produzione impostare esplicitamente `NODE_ENV=production` e `OTP_DELIVERY_MODE=smtp` nel file `docker/.env`.
 
 ## 📄 **Licenza e Contributi**
 

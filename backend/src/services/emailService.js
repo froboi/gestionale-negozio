@@ -10,14 +10,29 @@ const logger = winston.createLogger({
 class EmailService {
   constructor() {
     this.transporter = null;
+    this.deliveryMode = process.env.OTP_DELIVERY_MODE || (
+      process.env.NODE_ENV === 'production' ? 'smtp' : 'log'
+    );
     this.initTransporter();
   }
 
   initTransporter() {
+    if (!['log', 'smtp'].includes(this.deliveryMode)) {
+      throw new Error('OTP_DELIVERY_MODE must be either "log" or "smtp"');
+    }
+
+    if (this.deliveryMode === 'log') {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('OTP log delivery is not allowed in production');
+      }
+      logger.info('OTP delivery configured for development logs');
+      return;
+    }
+
     if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
       this.transporter = nodemailer.createTransport({
         host: process.env.SMTP_HOST,
-        port: process.env.SMTP_PORT || 587,
+        port: Number(process.env.SMTP_PORT) || 587,
         secure: process.env.SMTP_SECURE === 'true',
         auth: {
           user: process.env.SMTP_USER,
@@ -25,7 +40,7 @@ class EmailService {
         }
       });
     } else {
-      logger.warn('SMTP configuration missing. Emails will be logged to console only.');
+      throw new Error('SMTP configuration is required when OTP_DELIVERY_MODE=smtp');
     }
   }
 
@@ -41,27 +56,31 @@ class EmailService {
       </div>
     `;
 
-    if (this.transporter) {
-      try {
-        await this.transporter.sendMail({
-          from: process.env.SMTP_FROM || '"Gestionale Negozio" <noreply@gestionale.com>',
-          to: email,
-          subject,
-          html
-        });
-        logger.info(`OTP sent to ${email}`);
-        return true;
-      } catch (error) {
-        logger.error('Error sending email:', error);
-        return false;
-      }
-    } else {
-      // Dev mode: log OTP
-      console.log('=================================================');
-      console.log(`📧 MOCK EMAIL TO: ${email}`);
-      console.log(`🔑 OTP CODE: ${otp}`);
-      console.log('=================================================');
+    if (this.deliveryMode === 'log') {
+      logger.info('OTP generated for development login', {
+        recipient: email,
+        otp,
+        expiresInMinutes: 10
+      });
       return true;
+    }
+
+    try {
+      await this.transporter.sendMail({
+        from: process.env.SMTP_FROM || '"Gestionale Negozio" <noreply@gestionale.com>',
+        to: email,
+        subject,
+        html
+      });
+      logger.info('OTP sent by SMTP', { recipient: email });
+      return true;
+    } catch (error) {
+      logger.error('OTP SMTP delivery failed', {
+        code: error.code,
+        responseCode: error.responseCode,
+        message: error.message
+      });
+      throw error;
     }
   }
 }
