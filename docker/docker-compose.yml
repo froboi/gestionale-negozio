@@ -28,7 +28,7 @@ services:
       dockerfile: ../docker/Dockerfile.backend
     container_name: gestionale-backend
     environment:
-      NODE_ENV: production
+      NODE_ENV: ${NODE_ENV:-development}
       PORT: 3000
       DB_HOST: database
       DB_PORT: 3306
@@ -37,6 +37,13 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-userpassword}
       JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key}
       SESSION_SECRET: ${SESSION_SECRET:-your-super-secret-session-key}
+      OTP_DELIVERY_MODE: ${OTP_DELIVERY_MODE:-log}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      SMTP_FROM: ${SMTP_FROM}
       WHATSAPP_ACCESS_TOKEN: ${WHATSAPP_ACCESS_TOKEN}
       WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID}
       WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN}

@@ -126,8 +126,26 @@ router.post('/login', loginValidation, async (req, res) => {
             WHERE id = ?
           `, [otp, expiresAt, user.id]);
 
-          // Send OTP via email
-          await EmailService.sendOTP(user.email, otp);
+          // Deliver OTP according to the configured environment mode.
+          try {
+            await EmailService.sendOTP(user.email, otp);
+          } catch (error) {
+            // Do not leave a usable OTP behind when delivery fails.
+            await executeQuery(`
+              UPDATE users
+              SET otp_code = NULL, otp_expires_at = NULL
+              WHERE id = ?
+            `, [user.id]);
+
+            console.error('2FA OTP delivery failed:', {
+              code: error.code,
+              responseCode: error.responseCode,
+              message: error.message
+            });
+            return res.status(503).json({
+              error: 'Impossibile consegnare il codice 2FA. Riprova più tardi.'
+            });
+          }
 
           return res.status(402).json({ 
             error: '2FA richiesto',
